@@ -132,7 +132,14 @@ public class MainActivity extends Activity {
         void bottom(Canvas c,float w,float h){float top=h-78;p.setColor(Color.rgb(4,17,21));c.drawRect(0,top,w,h,p);for(int i=0;i<5;i++){float cx=(i+.5f)*w/5;if(i==2){p.setColor(teal);c.drawCircle(cx,top+25,27,p);txt(c,"+",cx-9,top+35,30,bg,true);}else{txt(c,tabs[i],cx-22,top+52,11,(screen==i?teal:muted),false);}final int idx=i;hit(i*w/5,top,(i+1)*w/5,h,()->{if(idx==2){addMovement(false);}else{screen=idx;invalidate();}});}}
         void metric(Canvas c,String label,String value,float x,float y,int col){txt(c,label,x,y,11,muted,false);txt(c,value,x,y+27,17,col,true);} void card(Canvas c,float l,float t,float r,float b){p.setColor(card);c.drawRoundRect(l,t,r,b,18,18,p);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(1);p.setColor(line);c.drawRoundRect(l,t,r,b,18,18,p);p.setStyle(Paint.Style.FILL);} void button(Canvas c,String label,float l,float t,float r,float b,Runnable run){p.setColor(teal);c.drawRoundRect(l,t,r,b,25,25,p);float tw=measure(label,15);txt(c,label,(l+r-tw)/2,t+(b-t)/2+6,15,bg,true);hit(l,t,r,b,run);}void buttonRed(Canvas c,String label,float l,float t,float r,float b,Runnable run){p.setColor(red);c.drawRoundRect(l,t,r,b,25,25,p);float tw=measure(label,15);txt(c,label,(l+r-tw)/2,t+(b-t)/2+6,15,Color.WHITE,true);hit(l,t,r,b,run);}
         void txt(Canvas c,String s,float x,float y,float size,int col,boolean bold){p.setTextSize(size);p.setColor(col);p.setTypeface(Typeface.create("sans",bold?Typeface.BOLD:Typeface.NORMAL));c.drawText(s,x,y,p);} float measure(String s,float z){p.setTextSize(z);return p.measureText(s);} void wrap(Canvas c,String s,float x,float y,float max,float size,int col){String[] ws=s.split(" ");String line="";float yy=y;for(String word:ws){String test=line.length()==0?word:line+" "+word;if(measure(test,size)>max){txt(c,line,x,yy,size,col,false);yy+=size+6;line=word;}else line=test;}if(!line.isEmpty())txt(c,line,x,yy,size,col,false);} void hit(float l,float t,float r,float b,Runnable run){hits.add(new Hit(l,t,r,b,run));}
-        @Override public boolean onTouchEvent(android.view.MotionEvent e){if(e.getAction()==MotionEvent.ACTION_UP){for(Hit h:hits)if(h.in(e.getX(),e.getY())){h.r.run();return true;}}return true;}
+        @Override public boolean onTouchEvent(android.view.MotionEvent e){if(e.getAction()==MotionEvent.ACTION_UP){for(Hit h:hits)if(h.in(e.getX(),e.getY())){h.action.run();return true;}}return true;}
     }
-    static class Hit{float l,t,r,b;Runnable r;Hit(float a,float b,float c,float d,Runnable x){l=a;t=b;r=c;this.b=d;this.r=x;}boolean in(float x,float y){return x>=l&&x<=r&&y>=t&&y<=b;}}
+    static class Hit{
+        float l,t,right,b;
+        Runnable action;
+        Hit(float a,float b,float c,float d,Runnable x){
+            l=a; t=b; right=c; this.b=d; action=x;
+        }
+        boolean in(float x,float y){return x>=l&&x<=right&&y>=t&&y<=b;}
+    }
 }
