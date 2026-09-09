@@ -24,7 +24,7 @@ public class MainActivity extends Activity {
         view = new FinanView(this, store);
         setContentView(view);
         // V1.5: force the bilingual selector once, including users upgrading from the Spanish-only build.
-        if(store.p.getInt("bilingual_setup_version",0) < 2) showLanguageDialog(true);
+        if(store.p.getInt("bilingual_setup_version",0) < 3) showLanguageDialog(true);
         else if(!store.p.getBoolean("currency_configured",false)) showCurrencyDialog();
     }
 
@@ -33,19 +33,35 @@ public class MainActivity extends Activity {
 
     void showLanguageDialog(boolean firstRun){
         String[] labels={"Português (Brasil)","Español (Internacional)"};
-        new AlertDialog.Builder(this).setTitle("Idioma / Language").setMessage("Escolha o idioma do FinanSmart / Elige el idioma de FinanSmart").setItems(labels,(d,which)->{
-            store.putString("language",which==0?"pt":"es");
-            store.p.edit()
-                    .putBoolean("language_configured",true)
-                    .putInt("bilingual_setup_version",2)
-                    .apply();
-            view.updateLanguage(); view.updateCurrency(); view.invalidate();
-            if(firstRun && !store.p.getBoolean("currency_configured",false)) showCurrencyDialog();
-        }).setCancelable(!firstRun).show();
+        String current=store.getString("language","pt");
+        int checked="es".equals(current)?1:0;
+        AlertDialog dialog=new AlertDialog.Builder(this)
+                .setTitle("Idioma / Idioma")
+                .setMessage("O idioma escolhido será aplicado em todo o FinanSmart.\nEl idioma elegido se aplicará a todo FinanSmart.")
+                .setSingleChoiceItems(labels,checked,null)
+                .setNegativeButton(firstRun?null:L("Cancelar","Cancelar"),null)
+                .setPositiveButton("OK",null)
+                .setCancelable(!firstRun)
+                .create();
+        dialog.setOnShowListener(x->{
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
+                int which=dialog.getListView().getCheckedItemPosition();
+                if(which<0) which=0;
+                store.putString("language",which==0?"pt":"es");
+                store.p.edit().putBoolean("language_configured",true).putInt("bilingual_setup_version",3).apply();
+                view.updateLanguage();
+                view.updateCurrency();
+                view.invalidate();
+                Toast.makeText(this,which==0?"FinanSmart agora está em Português":"FinanSmart ahora está en Español",Toast.LENGTH_SHORT).show();
+                dialog.dismiss();
+                if(firstRun && !store.p.getBoolean("currency_configured",false)) showCurrencyDialog();
+            });
+        });
+        dialog.show();
     }
 
     void showSettingsDialog(){
-        String[] items={"Idioma / Language — Português | Español",L("Moeda","Moneda")};
+        String[] items={L("Idioma — Português / Español","Idioma — Español / Português"),L("Moeda — ","Moneda — ")+store.getString("currency","USD")};
         new AlertDialog.Builder(this).setTitle(L("Configurações","Configuración")).setItems(items,(d,w)->{
             if(w==0) showLanguageDialog(false); else showCurrencyDialog();
         }).setNegativeButton(L("Fechar","Cerrar"),null).show();
@@ -143,14 +159,31 @@ public class MainActivity extends Activity {
         JSONArray arr(String k){try{return new JSONArray(p.getString(k,"[]"));}catch(Exception e){return new JSONArray();}}
         void save(String k,JSONArray a){p.edit().putString(k,a.toString()).apply();}
         void addMovement(String desc,double value,String cat,boolean income){try{JSONArray a=arr("mov_"+month());JSONObject o=new JSONObject();o.put("d",desc);o.put("v",value);o.put("c",cat);o.put("i",income);o.put("t",System.currentTimeMillis());a.put(o);save("mov_"+month(),a);}catch(Exception ignored){}}
-        void addMarket(String name,double value){try{JSONArray a=arr("market_"+month());JSONObject o=new JSONObject();o.put("n",name);o.put("v",value);a.put(o);save("market_"+month(),a);addMovement("Supermercado: "+name,value,"Supermercado",false);}catch(Exception ignored){}}
+        void addMarket(String name,double value){try{JSONArray a=arr("market_"+month());JSONObject o=new JSONObject();o.put("n",name);o.put("v",value);a.put(o);save("market_"+month(),a);addMovement("SmartMarket: "+name,value,"Supermercado",false);}catch(Exception ignored){}}
         void addDebt(String name,double value){try{JSONArray a=arr("debts");JSONObject o=new JSONObject();o.put("n",name);o.put("v",value);a.put(o);save("debts",a);}catch(Exception ignored){}}
         double income(){return sumMov(true);} double expense(){return sumMov(false);} double sumMov(boolean income){return sumMovKey("mov_"+month(),income);} 
         double sumMovKey(String key,boolean income){double total=0;JSONArray a=arr(key);for(int i=0;i<a.length();i++)try{JSONObject o=a.getJSONObject(i);if(o.getBoolean("i")==income)total+=o.getDouble("v");}catch(Exception ignored){}return total;}
         String monthOffset(int offset){Calendar c=(Calendar)now.clone();c.add(Calendar.MONTH,offset);return String.format(Locale.US,"%04d-%02d",c.get(Calendar.YEAR),c.get(Calendar.MONTH)+1);}
         double resultOffset(int offset){String m=monthOffset(offset);return sumMovKey("mov_"+m,true)-sumMovKey("mov_"+m,false);}
-        double category(String c){double total=0;JSONArray a=arr("mov_"+month());for(int i=0;i<a.length();i++)try{JSONObject o=a.getJSONObject(i);if(o.getBoolean("i"))continue;String oc=o.getString("c");boolean match=oc.equals(c)||(c.equals(L("Casa","Hogar"))&&oc.equals("Casa"))||(c.equals(L("Saúde","Salud"))&&oc.equals("Saúde"))||(c.equals("Alimentación")&&oc.equals("Alimentação"))||(c.equals("Ocio")&&oc.equals("Lazer"))||(c.equals("Tarjeta")&&oc.equals("Cartão"))||(c.equals("Deuda")&&oc.equals("Dívida"))||(c.equals("Negocio")&&oc.equals("Empresa"))||(c.equals("Otros")&&oc.equals("Outros"));if(match)total+=o.getDouble("v");}catch(Exception ignored){}return total;}
-        double marketTotaL(){double s=0;JSONArray a=arr("market_"+month());for(int i=0;i<a.length();i++)try{s+=a.getJSONObject(i).getDouble("v");}catch(Exception ignored){}return s;}
+        String canonicalCategory(String c){
+            if(c==null)return "";
+            switch(c){
+                case "Casa": case "Hogar": return "Hogar";
+                case "Saúde": case "Salud": return "Salud";
+                case "Alimentação": case "Alimentación": return "Alimentación";
+                case "Lazer": case "Ocio": return "Ocio";
+                case "Cartão": case "Tarjeta": return "Tarjeta";
+                case "Dívida": case "Deuda": return "Deuda";
+                case "Empresa": case "Negocio": return "Negocio";
+                case "Outros": case "Otros": return "Otros";
+                case "Salário": case "Salario": return "Salario";
+                case "Renda extra": case "Ingreso extra": return "Ingreso extra";
+                case "Investimento": case "Inversión": return "Inversión";
+                default: return c;
+            }
+        }
+        double category(String c){double total=0;String target=canonicalCategory(c);JSONArray a=arr("mov_"+month());for(int i=0;i<a.length();i++)try{JSONObject o=a.getJSONObject(i);if(o.getBoolean("i"))continue;String oc=canonicalCategory(o.getString("c"));if(oc.equals(target))total+=o.getDouble("v");}catch(Exception ignored){}return total;}
+        double marketTotal(){double s=0;JSONArray a=arr("market_"+month());for(int i=0;i<a.length();i++)try{s+=a.getJSONObject(i).getDouble("v");}catch(Exception ignored){}return s;}
         double debts(){double s=0;JSONArray a=arr("debts");for(int i=0;i<a.length();i++)try{s+=a.getJSONObject(i).getDouble("v");}catch(Exception ignored){}return s;}
         double getDouble(String k,double d){return p.getFloat(k,(float)d);} void putDouble(String k,double v){p.edit().putFloat(k,(float)v).apply();}
         int getInt(String k,int d){return p.getInt(k,d);} void putInt(String k,int v){p.edit().putInt(k,v).apply();}
@@ -177,7 +210,7 @@ public class MainActivity extends Activity {
             float langL=w-112, langR=w-56;
             p.setColor(card2); c.drawRoundRect(langL,10,langR,42,12,12,p);
             p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(1.2f); p.setColor(teal); c.drawRoundRect(langL,10,langR,42,12,12,p); p.setStyle(Paint.Style.FILL);
-            txt(c,"PT | ES",langL+8,31,10,teal,true);
+            String langBadge=isPt()?"PT ▾":"ES ▾"; txt(c,langBadge,langL+14,31,10,teal,true);
             hitD(langL,7,langR,47,()->showLanguageDialog(false));
 
             p.setColor(teal); c.drawCircle(w-27,26,16,p); txt(c,"⚙",w-34,32,15,bg,true);
@@ -207,7 +240,7 @@ public class MainActivity extends Activity {
         int freedom(){double p=s.getDouble("investimentos",0)+s.getDouble("reserva",0);double monthly=essential()>0?essential():s.expense();if(monthly<=0)return 0;double target=monthly*12*25;return (int)Math.min(100,100*p/Math.max(1,target));}
         void finance(Canvas c,float w,float y){txt(c,l("Finanças","Finanzas"),18,y+6,20,text,true);txt(c,l("Tudo em um só lugar","Todo en un solo lugar"),18,y+25,10,muted,false);String[][] items={{"⌂",l("Minha Casa","Mi Hogar"),l("Gastos da casa","Gastos del hogar")},{"▣","SmartMarket",l("Lista com soma automática","Lista con suma automática")},{"≡",l("Dívidas","Deudas"),l("Plano de pagamento","Plan de pago")},{"◆",l("Reserva","Reserva"),l("Sua segurança","Tu seguridad")},{"↗",l("Investimentos","Inversiones"),l("Crescimento","Crecimiento")},{"◇",l("Patrimônio","Patrimonio"),l("Seus ativos","Tus activos")},{"▦",l("Minha Empresa","Mi Negocio"),l("Gestão do negócio","Gestión del negocio")},{"♥",l("Recomeço","Nuevo Comienzo"),l("Reconstrução","Reconstrucción")}};int[] screens={5,6,7,0,8,8,9,10};for(int i=0;i<8;i++){int col=i%2,row=i/2;float x=14+col*187,yy=y+42+row*101;card(c,x,yy,x+174,yy+88);txt(c,items[i][0],x+14,yy+26,20,(i==7?red:teal),true);txt(c,items[i][1],x+42,yy+25,13,text,true);wrap(c,items[i][2],x+14,yy+52,145,10.5f,muted);final int sc=screens[i],idx=i;hitD(x,yy,x+174,yy+88,()->{if(idx==3)setSimpleValue("reserva",l("Atualizar reserva de emergência","Actualizar fondo de emergencia"));else{screen=sc;invalidate();}});}txt(c,l("Dica: mantenha seus dados atualizados para receber análises melhores.","Consejo: mantén tus datos actualizados para recibir mejores análisis."),18,y+462,10,muted,false);}
         void evolution(Canvas c,float w,float y){txt(c,l("Minha Jornada","Mi Camino"),18,y+6,20,text,true);txt(c,l("Seu progresso é salvo mês a mês","Tu progreso se guarda mes a mes"),18,y+25,10,muted,false);card(c,14,y+43,w-14,y+97);txt(c,"‹",28,y+78,24,cyan,true);txt(c,s.month(),w/2-30,y+76,12,text,true);txt(c,"›",w-39,y+78,24,cyan,true);hitD(14,y+43,w/2-20,y+97,()->{s.prevMonth();invalidate();});hitD(w/2+20,y+43,w-14,y+97,()->{s.nextMonth();invalidate();});double in=s.income(),ex=s.expense();card(c,14,y+110,w-14,y+202);metric(c,l("Receitas","Ingresos"),br.format(in),24,y+133,teal);metric(c,l("Gastos","Gastos"),br.format(ex),202,y+133,red);metric(c,l("Resultado","Resultado"),br.format(in-ex),24,y+174,(in-ex)>=0?teal:red);metric(c,"Score",String.valueOf(score()),202,y+174,cyan);card(c,14,y+215,w-14,y+334);txt(c,l("HISTÓRICO 6 MESES","HISTORIAL 6 MESES"),24,y+238,10,muted,true);miniChart(c,25,y+318,w-28,y+255);wrap(c,l("Cada mês fica salvo separadamente. Você pode voltar sem apagar as etapas anteriores.","Cada mes se conserva por separado. Puedes volver atrás sin borrar las etapas anteriores."),22,y+365,w-44,11.5f,muted);wrap(c,l("“As decisões que estou tomando hoje estão me aproximando ou me afastando da vida que quero ter?”","“¿Las decisiones que estoy tomando hoy me acercan o me alejan de la vida que quiero construir?”"),22,y+424,w-44,13,text);}
-        void house(Canvas c,float w,float y){double total=essential();txt(c,l("Minha Casa","Mi Hogar"),18,y+6,20,text,true);txt(c,l("Quanto custa manter sua casa?","¿Cuánto cuesta mantener tu hogar?"),18,y+25,10,muted,false);card(c,14,y+42,w-14,y+111);txt(c,br.format(total)+" / mes",24,y+72,22,text,true);txt(c,total>0?br.format(total/30)+l(" / dia"," / día"):l("Registre seus gastos essenciais","Registra tus gastos esenciales"),24,y+96,10.5f,muted,false);String[] keys={"Hogar","Supermercado","Salud","Transporte"};String[] labels=isPt()?new String[]{"Casa","Supermercado","Saúde","Transporte"}:new String[]{"Hogar","Supermercado","Salud","Transporte"};for(int i=0;i<keys.length;i++){float yy=y+145+i*52;card(c,14,yy-22,w-14,yy+20);txt(c,labels[i],25,yy+3,12,text,true);txt(c,br.format(s.category(keys[i])),w-118,yy+3,12,i==1?teal:cyan,true);}button(c,l("+ Registrar gasto da casa","+ Registrar gasto del hogar"),18,y+365,w-18,y+415,()->addMovement(false));}
+        void house(Canvas c,float w,float y){double total=essential();txt(c,l("Minha Casa","Mi Hogar"),18,y+6,20,text,true);txt(c,l("Quanto custa manter sua casa?","¿Cuánto cuesta mantener tu hogar?"),18,y+25,10,muted,false);card(c,14,y+42,w-14,y+111);txt(c,br.format(total)+l(" / mês"," / mes"),24,y+72,22,text,true);txt(c,total>0?br.format(total/30)+l(" / dia"," / día"):l("Registre seus gastos essenciais","Registra tus gastos esenciales"),24,y+96,10.5f,muted,false);String[] keys={"Hogar","Supermercado","Salud","Transporte"};String[] labels=isPt()?new String[]{"Casa","Supermercado","Saúde","Transporte"}:new String[]{"Hogar","Supermercado","Salud","Transporte"};for(int i=0;i<keys.length;i++){float yy=y+145+i*52;card(c,14,yy-22,w-14,yy+20);txt(c,labels[i],25,yy+3,12,text,true);txt(c,br.format(s.category(keys[i])),w-118,yy+3,12,i==1?teal:cyan,true);}button(c,l("+ Registrar gasto da casa","+ Registrar gasto del hogar"),18,y+365,w-18,y+415,()->addMovement(false));}
         void market(Canvas c,float w,float y){double limit=s.getDouble("mercado_limite",1000),tot=s.marketTotal();txt(c,"SmartMarket",18,y+6,20,text,true);txt(c,l("Compre dentro do seu limite","Compra dentro de tu límite"),18,y+25,10,muted,false);card(c,14,y+42,w-14,y+120);metric(c,l("Orçamento","Presupuesto"),br.format(limit),24,y+65,muted);metric(c,l("Carrinho","Carrito"),br.format(tot),204,y+65,teal);progress(c,24,y+103,w-24,Math.min(1,tot/Math.max(1,limit)),tot<=limit?teal:red);txt(c,l("Restante: ","Restante: ")+br.format(limit-tot),24,y+142,12,(limit-tot)>=0?teal:red,true);JSONArray a=s.arr("market_"+s.month());float yy=y+178;for(int i=Math.max(0,a.length()-5);i<a.length();i++)try{JSONObject o=a.getJSONObject(i);card(c,14,yy-22,w-14,yy+17);txt(c,o.getString("n"),25,yy+2,11.5f,text,false);txt(c,br.format(o.getDouble("v")),w-105,yy+2,11.5f,muted,true);yy+=47;}catch(Exception ignored){}button(c,l("+ Adicionar produto","+ Añadir producto"),18,y+421,w-18,y+471,()->addMarket());hitD(14,y+42,w-14,y+120,()->setSimpleValue("mercado_limite",l("Definir orçamento do supermercado","Definir presupuesto del supermercado")));}
         void debts(Canvas c,float w,float y){txt(c,l("Dívidas","Deudas"),18,y+6,20,text,true);txt(c,l("Organize e pague mais rápido","Organiza y paga más rápido"),18,y+25,10,muted,false);txt(c,l("Total: ","Total: ")+br.format(s.debts()),18,y+66,22,red,true);JSONArray a=s.arr("debts");float yy=y+108;for(int i=0;i<a.length()&&i<6;i++)try{JSONObject o=a.getJSONObject(i);card(c,14,yy-24,w-14,yy+19);txt(c,o.getString("n"),25,yy+2,11.5f,text,true);txt(c,br.format(o.getDouble("v")),w-110,yy+2,11.5f,red,true);yy+=50;}catch(Exception ignored){}button(c,l("+ Registrar dívida","+ Registrar deuda"),18,y+421,w-18,y+471,()->addDebt());}
         void invest(Canvas c,float w,float y){txt(c,l("Investimentos e Patrimônio","Inversiones y Patrimonio"),18,y+6,19,text,true);txt(c,l("Primeiro o objetivo, depois o produto","Primero el objetivo, después el producto"),18,y+25,10,muted,false);double inv=s.getDouble("investimentos",0),extra=s.getDouble("patrimonio_extra",0);card(c,14,y+42,w-14,y+122);metric(c,l("Investido","Invertido"),br.format(inv),24,y+67,teal);metric(c,l("Outros ativos","Otros activos"),br.format(extra),204,y+67,cyan);txt(c,l("Liquidez • risco • prazo • objetivo","Liquidez • riesgo • plazo • objetivo"),24,y+109,10,muted,false);button(c,l("Atualizar investimentos","Actualizar inversiones"),18,y+155,w-18,y+205,()->setSimpleValue("investimentos",l("Valor total investido","Importe total invertido")));button(c,l("Atualizar outros ativos","Actualizar otros activos"),18,y+220,w-18,y+270,()->setSimpleValue("patrimonio_extra",l("Imóveis, veículos e outros ativos","Inmuebles, vehículos y otros activos")));card(c,14,y+295,w-14,y+390);txt(c,l("ANÁLISE RESPONSÁVEL","ANÁLISIS RESPONSABLE"),24,y+319,10,teal,true);wrap(c,l("O FinanSmart compara sua situação, liquidez e objetivos. Não promete rentabilidade nem executa investimentos.","FinanSmart compara tu situación, liquidez y objetivos. No promete rentabilidad ni ejecuta inversiones."),24,y+344,w-48,11.5f,text);}
