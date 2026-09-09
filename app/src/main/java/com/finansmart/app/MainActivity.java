@@ -5,6 +5,7 @@ import android.os.Bundle;
 import android.content.*;
 import android.graphics.*;
 import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.GradientDrawable;
 import android.view.*;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.*;
@@ -16,7 +17,7 @@ public class MainActivity extends Activity {
     FinanceStore store;
     FinanView view;
 
-    static final int CONFIG_VERSION = 18;
+    static final int CONFIG_VERSION = 19;
 
     @Override public void onCreate(Bundle b){
         super.onCreate(b);
@@ -24,8 +25,8 @@ public class MainActivity extends Activity {
         getWindow().setNavigationBarColor(Color.rgb(6,19,24));
         store = new FinanceStore(this);
 
-        // V1.8 uses a real setup screen instead of a selection dialog.
-        // This prevents a language/currency tap from being shown but not applied.
+        // V1.9: setup controls use density-independent sizing and their own visual state.
+        // Language and currency are independent settings; changing either never rebuilds the dashboard geometry.
         if(store.p.getInt("ui_config_version",0) < CONFIG_VERSION){
             showLanguageSetupScreen();
         }else{
@@ -46,17 +47,32 @@ public class MainActivity extends Activity {
         v.setText(text); v.setTextColor(Color.WHITE); v.setTextSize(sp);
         v.setGravity(Gravity.CENTER);
         v.setTypeface(Typeface.create("sans",bold?Typeface.BOLD:Typeface.NORMAL));
-        v.setPadding(24,10,24,10);
+        v.setPadding(dp(24),dp(10),dp(24),dp(10));
         return v;
     }
 
-    Button setupButton(String text){
-        Button b=new Button(this);
-        b.setText(text); b.setTextSize(16); b.setAllCaps(false);
+    int dp(float v){ return Math.round(v*getResources().getDisplayMetrics().density); }
+
+    TextView setupButton(String text){
+        TextView b=new TextView(this);
+        b.setText(text);
+        b.setTextSize(17);
         b.setTextColor(Color.rgb(5,18,23));
-        b.setBackgroundColor(Color.rgb(32,235,178));
-        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,60);
-        lp.setMargins(22,10,22,10); b.setLayoutParams(lp);
+        b.setGravity(Gravity.CENTER);
+        b.setTypeface(Typeface.create("sans",Typeface.BOLD));
+        b.setSingleLine(true);
+        b.setMinHeight(dp(56));
+        b.setPadding(dp(18),0,dp(18),0);
+        GradientDrawable bg=new GradientDrawable();
+        bg.setColor(Color.rgb(32,235,178));
+        bg.setCornerRadius(dp(18));
+        bg.setStroke(dp(1),Color.rgb(44,255,195));
+        b.setBackground(bg);
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(56));
+        lp.setMargins(dp(6),dp(8),dp(6),dp(8));
+        b.setLayoutParams(lp);
+        b.setClickable(true);
+        b.setFocusable(true);
         return b;
     }
 
@@ -64,12 +80,12 @@ public class MainActivity extends Activity {
         LinearLayout root=new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER);
-        root.setPadding(22,28,22,28);
+        root.setPadding(dp(22),dp(28),dp(22),dp(28));
         root.setBackgroundColor(Color.rgb(5,18,23));
         return root;
     }
 
-    /** First access: two real buttons. A tap is the confirmation. */
+    /** First access: two explicit, high-contrast language controls. A tap is the confirmation. */
     void showLanguageSetupScreen(){
         LinearLayout root=setupBase();
         root.addView(setupText("FinanSmart",30,true));
@@ -77,8 +93,8 @@ public class MainActivity extends Activity {
         root.addView(setupText("Escolha seu idioma\nElige tu idioma",22,true));
         root.addView(setupText("A escolha muda toda a interface do aplicativo.\nLa elección cambia toda la interfaz de la aplicación.",13,false));
 
-        Button pt=setupButton("Português (Brasil)");
-        Button es=setupButton("Español (Internacional)");
+        TextView pt=setupButton("Português (Brasil)");
+        TextView es=setupButton("Español (Internacional)");
         root.addView(pt); root.addView(es);
 
         pt.setOnClickListener(v->applySetupLanguage("pt"));
@@ -107,7 +123,7 @@ public class MainActivity extends Activity {
         ScrollView scroll=new ScrollView(this);
         LinearLayout choices=new LinearLayout(this); choices.setOrientation(LinearLayout.VERTICAL);
         for(int i=0;i<labels.length;i++){
-            Button b=setupButton(labels[i]); final String code=codes[i];
+            TextView b=setupButton(labels[i]); final String code=codes[i];
             b.setOnClickListener(v->finishInitialSetup(code));
             choices.addView(b);
         }
@@ -130,7 +146,7 @@ public class MainActivity extends Activity {
         Toast.makeText(this,L("FinanSmart configurado em Português","FinanSmart configurado en Español")+" • "+currencyCode,Toast.LENGTH_SHORT).show();
     }
 
-    /** Later language changes: direct tap, synchronous save, complete Activity rebuild. */
+    /** Later language changes: save synchronously and refresh the existing dashboard in place. */
     void showLanguageDialog(boolean firstRun){
         String[] labels={"Português (Brasil)","Español (Internacional)"};
         new AlertDialog.Builder(this)
@@ -139,8 +155,12 @@ public class MainActivity extends Activity {
                     String code=which==1?"es":"pt";
                     boolean ok=store.p.edit().putString("language",code).putBoolean("language_configured",true).commit();
                     if(ok){
+                        if(view!=null){
+                            view.updateLanguage();
+                            view.updateCurrency();
+                            view.invalidate();
+                        }
                         Toast.makeText(this,code.equals("pt")?"Português aplicado":"Español aplicado",Toast.LENGTH_SHORT).show();
-                        recreate();
                     }else Toast.makeText(this,"Erro ao salvar / Error al guardar",Toast.LENGTH_LONG).show();
                 })
                 .setNegativeButton(L("Cancelar","Cancelar"),null)
@@ -149,7 +169,7 @@ public class MainActivity extends Activity {
 
     void showSettingsDialog(){
         String currentLanguage=isPt()?"Português":"Español";
-        String currentCurrency=store.getString("currency",isPt()?"BRL":"USD");
+        String currentCurrency=store.getString("currency","BRL");
         String[] items={L("Idioma: ","Idioma: ")+currentLanguage+"  ›",L("Moeda: ","Moneda: ")+currentCurrency+"  ›"};
         new AlertDialog.Builder(this)
                 .setTitle(L("Configurações","Configuración"))
@@ -169,8 +189,11 @@ public class MainActivity extends Activity {
                     String code=codes[Math.max(0,Math.min(which,codes.length-1))];
                     boolean ok=store.p.edit().putString("currency",code).putBoolean("currency_configured",true).commit();
                     if(ok){
+                        if(view!=null){
+                            view.updateCurrency();
+                            view.invalidate();
+                        }
                         Toast.makeText(this,L("Moeda aplicada: ","Moneda aplicada: ")+code,Toast.LENGTH_SHORT).show();
-                        recreate();
                     }else Toast.makeText(this,L("Erro ao salvar a moeda","Error al guardar la moneda"),Toast.LENGTH_LONG).show();
                 })
                 .setNegativeButton(L("Cancelar","Cancelar"),null)
@@ -303,7 +326,7 @@ public class MainActivity extends Activity {
         FinanView(Context c,FinanceStore st){super(c);s=st;updateLanguage();updateCurrency();p.setTypeface(Typeface.create("sans",Typeface.NORMAL));setBackgroundColor(bg);setOnApplyWindowInsetsListener((v,in)->{topInset=in.getSystemWindowInsetTop();bottomInset=in.getSystemWindowInsetBottom();invalidate();return in;});}
         void updateLanguage(){tabs=isPt()?new String[]{"Hoje","Finanças","+","Evolução","Smart AI"}:new String[]{"Hoy",l("Finanças","Finanzas"),"+","Evolución","Smart AI"};}
         String l(String pt,String es){return L(pt,es);}
-        void updateCurrency(){try{br=NumberFormat.getCurrencyInstance(isPt()?new Locale("pt","BR"):Locale.forLanguageTag("es-419"));br.setCurrency(Currency.getInstance(s.getString("currency","USD")));}catch(Exception e){br=NumberFormat.getCurrencyInstance(Locale.US);}}
+        void updateCurrency(){try{br=NumberFormat.getCurrencyInstance(isPt()?new Locale("pt","BR"):Locale.forLanguageTag("es-419"));br.setCurrency(Currency.getInstance(s.getString("currency","BRL")));}catch(Exception e){br=NumberFormat.getCurrencyInstance(Locale.US);}}
         @Override protected void onDraw(Canvas raw){super.onDraw(raw);hits.clear(); float wpx=getWidth(),hpx=getHeight(); raw.drawColor(bg);scale=wpx/390f;designH=(hpx-topInset-bottomInset)/scale;raw.save();raw.translate(0,topInset);raw.scale(scale,scale);float w=390,h=designH;header(raw,w);float y=78;switch(screen){case 0:home(raw,w,y);break;case 1:finance(raw,w,y);break;case 2:home(raw,w,y);break;case 3:evolution(raw,w,y);break;case 4:ai(raw,w,y);break;case 5:house(raw,w,y);break;case 6:market(raw,w,y);break;case 7:debts(raw,w,y);break;case 8:invest(raw,w,y);break;case 9:business(raw,w,y);break;case 10:restart(raw,w,y);break;}bottom(raw,w,h);raw.restore();}
         void header(Canvas c,float w){
             txt(c,"Finan",18,28,22,Color.WHITE,true);

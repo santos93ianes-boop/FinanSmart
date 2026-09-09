@@ -1,23 +1,24 @@
-# FinanSmart V1.8 — Bilíngue real (PT + ES)
+# FinanSmart V1.9 Estável — Português + Español
 
-Um único APK com Português (Brasil) e Español (Internacional).
+Versão reconstruída a partir do dashboard aprovado, corrigindo somente a infraestrutura de idioma e moeda.
 
-## Mudança interna da V1.8
-
-- O idioma agora é salvo imediatamente ao tocar em Português ou Español.
-- A Activity é reconstruída (`recreate()`) após a mudança, forçando toda a interface a ler o novo idioma.
-- Não existe botão OK intermediário para idioma.
-- A moeda é uma configuração independente do idioma e também é aplicada imediatamente.
-- Configurações ficam no botão ⚙: Idioma e Moeda/Moneda.
-- Os mesmos dados financeiros permanecem ao alternar idioma ou moeda.
-- Instalações que vierem de V1.5/V1.6/V1.7 recebem uma nova configuração inicial V1.8 uma única vez.
+## O que mudou internamente
+- Os controles de configuração não usam mais altura em pixels crus. Todo o setup usa `dp`, evitando textos cortados ou reduzidos em aparelhos de alta densidade.
+- Os botões de idioma e moeda são controles próprios (`TextView` + `GradientDrawable`) com contraste fixo e área de toque de 56dp.
+- Idioma e moeda são preferências independentes.
+- A troca de idioma atualiza os textos do dashboard no lugar (`updateLanguage()` + `invalidate()`), sem recriar a Activity e sem alterar a geometria do layout.
+- A troca de moeda atualiza apenas o formatador monetário (`updateCurrency()` + `invalidate()`).
+- Os dados existentes continuam no mesmo `SharedPreferences` (`finansmart`).
+- BRL é apenas o fallback técnico quando ainda não existe moeda salva; a primeira configuração obriga o usuário a escolher a moeda.
 
 ## Primeiro acesso
+1. Escolha `Português (Brasil)` ou `Español (Internacional)`.
+2. Escolha BRL, USD, EUR, MXN, COP, ARS, CLP, PEN ou UYU.
+3. O dashboard abre com o idioma e moeda escolhidos.
 
-1. Escolha **Português (Brasil)** ou **Español (Internacional)**.
-2. Escolha a moeda.
-3. O FinanSmart abre já no idioma e na moeda selecionados.
+## Depois
+- Toque em `PT ▾` / `ES ▾` para trocar somente o idioma.
+- Toque em `⚙` para alterar Idioma ou Moeda.
 
 ## Build
-
-GitHub Actions > **Build FinanSmart V1.8 Bilingual Real APK**.
+Use GitHub Actions. O APK é disponibilizado como artefato do workflow.
