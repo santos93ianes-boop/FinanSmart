@@ -16,61 +16,165 @@ public class MainActivity extends Activity {
     FinanceStore store;
     FinanView view;
 
+    static final int CONFIG_VERSION = 18;
+
     @Override public void onCreate(Bundle b){
         super.onCreate(b);
         getWindow().setStatusBarColor(Color.rgb(6,19,24));
         getWindow().setNavigationBarColor(Color.rgb(6,19,24));
         store = new FinanceStore(this);
+
+        // V1.8 uses a real setup screen instead of a selection dialog.
+        // This prevents a language/currency tap from being shown but not applied.
+        if(store.p.getInt("ui_config_version",0) < CONFIG_VERSION){
+            showLanguageSetupScreen();
+        }else{
+            launchMainUi();
+        }
+    }
+
+    void launchMainUi(){
         view = new FinanView(this, store);
         setContentView(view);
-        // V1.5: force the bilingual selector once, including users upgrading from the Spanish-only build.
-        if(store.p.getInt("bilingual_setup_version",0) < 3) showLanguageDialog(true);
-        else if(!store.p.getBoolean("currency_configured",false)) showCurrencyDialog();
     }
 
     boolean isPt(){ return "pt".equals(store.getString("language","pt")); }
     String L(String pt,String es){ return isPt()?pt:es; }
 
+    TextView setupText(String text,float sp,boolean bold){
+        TextView v=new TextView(this);
+        v.setText(text); v.setTextColor(Color.WHITE); v.setTextSize(sp);
+        v.setGravity(Gravity.CENTER);
+        v.setTypeface(Typeface.create("sans",bold?Typeface.BOLD:Typeface.NORMAL));
+        v.setPadding(24,10,24,10);
+        return v;
+    }
+
+    Button setupButton(String text){
+        Button b=new Button(this);
+        b.setText(text); b.setTextSize(16); b.setAllCaps(false);
+        b.setTextColor(Color.rgb(5,18,23));
+        b.setBackgroundColor(Color.rgb(32,235,178));
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,60);
+        lp.setMargins(22,10,22,10); b.setLayoutParams(lp);
+        return b;
+    }
+
+    LinearLayout setupBase(){
+        LinearLayout root=new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setGravity(Gravity.CENTER);
+        root.setPadding(22,28,22,28);
+        root.setBackgroundColor(Color.rgb(5,18,23));
+        return root;
+    }
+
+    /** First access: two real buttons. A tap is the confirmation. */
+    void showLanguageSetupScreen(){
+        LinearLayout root=setupBase();
+        root.addView(setupText("FinanSmart",30,true));
+        TextView accent=setupText("PT  •  ES",14,true); accent.setTextColor(Color.rgb(32,235,178)); root.addView(accent);
+        root.addView(setupText("Escolha seu idioma\nElige tu idioma",22,true));
+        root.addView(setupText("A escolha muda toda a interface do aplicativo.\nLa elección cambia toda la interfaz de la aplicación.",13,false));
+
+        Button pt=setupButton("Português (Brasil)");
+        Button es=setupButton("Español (Internacional)");
+        root.addView(pt); root.addView(es);
+
+        pt.setOnClickListener(v->applySetupLanguage("pt"));
+        es.setOnClickListener(v->applySetupLanguage("es"));
+        setContentView(root);
+    }
+
+    void applySetupLanguage(String code){
+        boolean ok=store.p.edit().putString("language",code).putBoolean("language_configured",true).commit();
+        if(!ok){
+            Toast.makeText(this,"Não foi possível salvar / No se pudo guardar",Toast.LENGTH_LONG).show();
+            return;
+        }
+        showCurrencySetupScreen();
+    }
+
+    /** Currency is the second setup step and does not change the chosen language. */
+    void showCurrencySetupScreen(){
+        LinearLayout root=setupBase();
+        root.addView(setupText("FinanSmart",28,true));
+        root.addView(setupText(L("Escolha sua moeda","Elige tu moneda"),22,true));
+        root.addView(setupText(L("A moeda é independente do idioma e pode ser alterada depois em Configurações.","La moneda es independiente del idioma y puede cambiarse después en Configuración."),13,false));
+
+        String[] labels={"BRL — R$","USD — US$","EUR — €","MXN — MX$","COP — COL$","ARS — AR$","CLP — CLP$","PEN — S/","UYU — $U"};
+        String[] codes={"BRL","USD","EUR","MXN","COP","ARS","CLP","PEN","UYU"};
+        ScrollView scroll=new ScrollView(this);
+        LinearLayout choices=new LinearLayout(this); choices.setOrientation(LinearLayout.VERTICAL);
+        for(int i=0;i<labels.length;i++){
+            Button b=setupButton(labels[i]); final String code=codes[i];
+            b.setOnClickListener(v->finishInitialSetup(code));
+            choices.addView(b);
+        }
+        scroll.addView(choices);
+        root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
+        setContentView(root);
+    }
+
+    void finishInitialSetup(String currencyCode){
+        boolean ok=store.p.edit()
+                .putString("currency",currencyCode)
+                .putBoolean("currency_configured",true)
+                .putInt("ui_config_version",CONFIG_VERSION)
+                .commit();
+        if(!ok){
+            Toast.makeText(this,L("Não foi possível salvar a moeda","No se pudo guardar la moneda"),Toast.LENGTH_LONG).show();
+            return;
+        }
+        launchMainUi();
+        Toast.makeText(this,L("FinanSmart configurado em Português","FinanSmart configurado en Español")+" • "+currencyCode,Toast.LENGTH_SHORT).show();
+    }
+
+    /** Later language changes: direct tap, synchronous save, complete Activity rebuild. */
     void showLanguageDialog(boolean firstRun){
         String[] labels={"Português (Brasil)","Español (Internacional)"};
-        String current=store.getString("language","pt");
-        int checked="es".equals(current)?1:0;
-        AlertDialog dialog=new AlertDialog.Builder(this)
-                .setTitle("Idioma / Idioma")
-                .setMessage("O idioma escolhido será aplicado em todo o FinanSmart.\nEl idioma elegido se aplicará a todo FinanSmart.")
-                .setSingleChoiceItems(labels,checked,null)
-                .setNegativeButton(firstRun?null:L("Cancelar","Cancelar"),null)
-                .setPositiveButton("OK",null)
-                .setCancelable(!firstRun)
-                .create();
-        dialog.setOnShowListener(x->{
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
-                int which=dialog.getListView().getCheckedItemPosition();
-                if(which<0) which=0;
-                store.putString("language",which==0?"pt":"es");
-                store.p.edit().putBoolean("language_configured",true).putInt("bilingual_setup_version",3).apply();
-                view.updateLanguage();
-                view.updateCurrency();
-                view.invalidate();
-                Toast.makeText(this,which==0?"FinanSmart agora está em Português":"FinanSmart ahora está en Español",Toast.LENGTH_SHORT).show();
-                dialog.dismiss();
-                if(firstRun && !store.p.getBoolean("currency_configured",false)) showCurrencyDialog();
-            });
-        });
-        dialog.show();
+        new AlertDialog.Builder(this)
+                .setTitle(L("Alterar idioma","Cambiar idioma"))
+                .setItems(labels,(d,which)->{
+                    String code=which==1?"es":"pt";
+                    boolean ok=store.p.edit().putString("language",code).putBoolean("language_configured",true).commit();
+                    if(ok){
+                        Toast.makeText(this,code.equals("pt")?"Português aplicado":"Español aplicado",Toast.LENGTH_SHORT).show();
+                        recreate();
+                    }else Toast.makeText(this,"Erro ao salvar / Error al guardar",Toast.LENGTH_LONG).show();
+                })
+                .setNegativeButton(L("Cancelar","Cancelar"),null)
+                .show();
     }
 
     void showSettingsDialog(){
-        String[] items={L("Idioma — Português / Español","Idioma — Español / Português"),L("Moeda — ","Moneda — ")+store.getString("currency","USD")};
-        new AlertDialog.Builder(this).setTitle(L("Configurações","Configuración")).setItems(items,(d,w)->{
-            if(w==0) showLanguageDialog(false); else showCurrencyDialog();
-        }).setNegativeButton(L("Fechar","Cerrar"),null).show();
+        String currentLanguage=isPt()?"Português":"Español";
+        String currentCurrency=store.getString("currency",isPt()?"BRL":"USD");
+        String[] items={L("Idioma: ","Idioma: ")+currentLanguage+"  ›",L("Moeda: ","Moneda: ")+currentCurrency+"  ›"};
+        new AlertDialog.Builder(this)
+                .setTitle(L("Configurações","Configuración"))
+                .setItems(items,(d,w)->{if(w==0)showLanguageDialog(false);else showCurrencyDialog(false);})
+                .setNegativeButton(L("Fechar","Cerrar"),null)
+                .show();
     }
 
-    void showCurrencyDialog(){
-        String[] labels=isPt()?new String[]{"BRL — Real brasileiro","USD — Dólar americano","EUR — Euro","MXN — Peso mexicano","COP — Peso colombiano","ARS — Peso argentino","CLP — Peso chileno","PEN — Sol peruano","UYU — Peso uruguaio"}:new String[]{"USD — Dólar estadounidense","EUR — Euro","MXN — Peso mexicano","COP — Peso colombiano","ARS — Peso argentino","CLP — Peso chileno","PEN — Sol peruano","UYU — Peso uruguayo","BRL — Real brasileño"};
-        String[] codes=isPt()?new String[]{"BRL","USD","EUR","MXN","COP","ARS","CLP","PEN","UYU"}:new String[]{"USD","EUR","MXN","COP","ARS","CLP","PEN","UYU","BRL"};
-        new AlertDialog.Builder(this).setTitle(L("Escolha sua moeda","Elige tu moneda")).setMessage(L("Você pode alterar depois tocando no botão ⚙ no topo.","Puedes cambiarla después tocando el botón ⚙ de la parte superior.")).setItems(labels,(d,which)->{store.p.edit().putString("currency",codes[which]).putBoolean("currency_configured",true).apply();view.updateCurrency();view.invalidate();}).show();
+    void showCurrencyDialog(){ showCurrencyDialog(false); }
+    void showCurrencyDialog(boolean firstRun){
+        final String[] labels={"BRL — R$","USD — US$","EUR — €","MXN — MX$","COP — COL$","ARS — AR$","CLP — CLP$","PEN — S/","UYU — $U"};
+        final String[] codes={"BRL","USD","EUR","MXN","COP","ARS","CLP","PEN","UYU"};
+        new AlertDialog.Builder(this)
+                .setTitle(L("Alterar moeda","Cambiar moneda"))
+                .setMessage(L("Toque na moeda desejada. A alteração é imediata.","Toca la moneda deseada. El cambio es inmediato."))
+                .setItems(labels,(d,which)->{
+                    String code=codes[Math.max(0,Math.min(which,codes.length-1))];
+                    boolean ok=store.p.edit().putString("currency",code).putBoolean("currency_configured",true).commit();
+                    if(ok){
+                        Toast.makeText(this,L("Moeda aplicada: ","Moneda aplicada: ")+code,Toast.LENGTH_SHORT).show();
+                        recreate();
+                    }else Toast.makeText(this,L("Erro ao salvar a moeda","Error al guardar la moneda"),Toast.LENGTH_LONG).show();
+                })
+                .setNegativeButton(L("Cancelar","Cancelar"),null)
+                .show();
     }
 
     void addMovement(boolean income){

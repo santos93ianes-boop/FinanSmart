@@ -1,22 +1,23 @@
-# FinanSmart V1.7 — Português + Español
+# FinanSmart V1.8 — Bilíngue real (PT + ES)
 
-Um único aplicativo Android com dois idiomas completos.
+Um único APK com Português (Brasil) e Español (Internacional).
 
-## Idiomas
-- Português (Brasil)
-- Español (Internacional)
+## Mudança interna da V1.8
 
-Na primeira abertura o FinanSmart solicita o idioma. O idioma escolhido é aplicado à interface completa. A troca posterior pode ser feita pelo botão **PT ▾ / ES ▾** no topo ou por **Configurações**. Trocar o idioma não apaga nem duplica receitas, gastos, dívidas, reserva, investimentos, SmartMarket, empresa ou histórico mensal.
+- O idioma agora é salvo imediatamente ao tocar em Português ou Español.
+- A Activity é reconstruída (`recreate()`) após a mudança, forçando toda a interface a ler o novo idioma.
+- Não existe botão OK intermediário para idioma.
+- A moeda é uma configuração independente do idioma e também é aplicada imediatamente.
+- Configurações ficam no botão ⚙: Idioma e Moeda/Moneda.
+- Os mesmos dados financeiros permanecem ao alternar idioma ou moeda.
+- Instalações que vierem de V1.5/V1.6/V1.7 recebem uma nova configuração inicial V1.8 uma única vez.
 
-## Melhorias V1.7
-- Corrigido o método `marketTotal()` que impedia a compilação da versão anterior.
-- Seletor de idioma mais claro, com idioma atual marcado.
-- Confirmação visual após a troca de idioma.
-- Botão de idioma mostra PT ou ES conforme o idioma ativo.
-- Moeda continua independente do idioma.
-- Categorias antigas em português e espanhol continuam compatíveis nas análises.
-- Descrições automáticas do SmartMarket passaram a usar nome neutro para não misturar idiomas.
-- Mantidos os mesmos dados em SharedPreferences `finansmart`.
+## Primeiro acesso
 
-## GitHub Actions
-O workflow `.github/workflows/android-apk.yml` usa Java 17, Android SDK 35 e Gradle 8.7. O artefato será publicado com o nome **FinanSmart-V1.7-BILINGUAL-APK**.
+1. Escolha **Português (Brasil)** ou **Español (Internacional)**.
+2. Escolha a moeda.
+3. O FinanSmart abre já no idioma e na moeda selecionados.
+
+## Build
+
+GitHub Actions > **Build FinanSmart V1.8 Bilingual Real APK**.
