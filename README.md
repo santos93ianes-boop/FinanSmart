@@ -1,14 +1,13 @@
-# FinanSmart Español V1.3
+# FinanSmart V1.5 — Português + Español
 
-Versión internacional en español neutro del FinanSmart.
+Um único APK com os dois idiomas.
 
-## Funciones principales
-- Hoy: patrimonio, disponible, gastos, dinero libre, prioridad, Score, reserva y libertad.
-- Finanzas: Mi Hogar, SmartMarket, Deudas, Fondo de emergencia, Inversiones, Patrimonio, Mi Negocio y Nuevo Comienzo.
-- Evolución mensual con historial.
-- Smart AI local basada en los datos registrados.
-- Selección de moneda: USD, EUR, MXN, COP, ARS, CLP, PEN, UYU y BRL.
-- Sin conexión bancaria. Los datos son introducidos manualmente por el usuario.
+## O que foi corrigido
+- Ao atualizar de uma versão anterior em espanhol, o app mostra novamente a escolha de idioma.
+- Botão **PT | ES** visível no topo de todas as telas.
+- O idioma pode ser trocado a qualquer momento sem apagar os dados.
+- Menu de configurações também contém **Idioma / Language — Português | Español**.
+- Moeda continua independente do idioma.
 
-## APK por GitHub Actions
-El workflow `.github/workflows/android-apk.yml` genera el APK debug automáticamente.
+## Gerar APK no GitHub
+Envie todo o conteúdo para a raiz do repositório. O workflow em `.github/workflows/android-apk.yml` gera o artefato **FinanSmart-V1.5-PT-ES-APK**.
