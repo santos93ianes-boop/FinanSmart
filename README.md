@@ -1,18 +1,14 @@
-# FinanSmart V1.2
+# FinanSmart Español V1.3
 
-Versão Android atualizada para GitHub Actions.
+Versión internacional en español neutro del FinanSmart.
 
-## Melhorias V1.2
-- Interface redimensionada para ocupar corretamente a tela do celular.
-- Respeita a barra de status e a barra de navegação do Android.
-- Dashboard premium com atalhos, evolução de 6 meses e prioridade do dia.
-- Barra inferior completa: Hoje, Finanças, +, Evolução e Smart AI.
-- Botão + abre menu para gasto, receita, SmartMarket, dívida e reserva.
-- Reserva não mostra mais valores artificiais quando faltam dados: exibe “Configurar”.
-- Migração remove os valores demonstrativos R$ 500 / R$ 1.200 em instalações antigas ainda vazias.
-- Histórico mensal preservado.
-- Sem conexão bancária e sem movimentação automática de dinheiro.
+## Funciones principales
+- Hoy: patrimonio, disponible, gastos, dinero libre, prioridad, Score, reserva y libertad.
+- Finanzas: Mi Hogar, SmartMarket, Deudas, Fondo de emergencia, Inversiones, Patrimonio, Mi Negocio y Nuevo Comienzo.
+- Evolución mensual con historial.
+- Smart AI local basada en los datos registrados.
+- Selección de moneda: USD, EUR, MXN, COP, ARS, CLP, PEN, UYU y BRL.
+- Sin conexión bancaria. Los datos son introducidos manualmente por el usuario.
 
-## Gerar APK
-No GitHub: Actions > Build FinanSmart APK > Run workflow.
-Depois baixe o artefato FinanSmart-APK.
+## APK por GitHub Actions
+El workflow `.github/workflows/android-apk.yml` genera el APK debug automáticamente.
