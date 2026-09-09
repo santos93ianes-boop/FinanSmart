@@ -17,7 +17,7 @@ public class MainActivity extends Activity {
     FinanceStore store;
     FinanView view;
 
-    static final int CONFIG_VERSION = 20;
+    static final int CONFIG_VERSION = 21;
 
     @Override public void onCreate(Bundle b){
         super.onCreate(b);
@@ -25,13 +25,12 @@ public class MainActivity extends Activity {
         getWindow().setNavigationBarColor(Color.rgb(6,19,24));
         store = new FinanceStore(this);
 
-        // V1.9: setup controls use density-independent sizing and their own visual state.
-        // Language and currency are independent settings; changing either never rebuilds the dashboard geometry.
-        if(store.p.getInt("ui_config_version",0) < CONFIG_VERSION){
-            showLanguageSetupScreen();
-        }else{
-            launchMainUi();
-        }
+        // Setup is based on missing preferences, not app version. Updates never force onboarding again.
+        boolean hasLanguage=store.p.getBoolean("language_configured",false)||store.p.contains("language");
+        boolean hasCurrency=store.p.getBoolean("currency_configured",false)||store.p.contains("currency");
+        if(!hasLanguage) showLanguageSetupScreen();
+        else if(!hasCurrency) showCurrencySetupScreen();
+        else launchMainUi();
     }
 
     void launchMainUi(){
@@ -170,11 +169,48 @@ public class MainActivity extends Activity {
     void showSettingsDialog(){
         String currentLanguage=isPt()?"Português":"Español";
         String currentCurrency=store.getString("currency","BRL");
-        String[] items={L("Idioma: ","Idioma: ")+currentLanguage+"  ›",L("Moeda: ","Moneda: ")+currentCurrency+"  ›"};
+        String person=store.getString("profile_name","").trim();
+        boolean hidden=store.p.getBoolean("hide_patrimonio",false);
+        boolean privacyAll=store.p.getBoolean("privacy_all_values",false);
+        String[] items={
+                L("Idioma: ","Idioma: ")+currentLanguage+"  ›",
+                L("Moeda: ","Moneda: ")+currentCurrency+"  ›",
+                L("Nome: ","Nombre: ")+(person.isEmpty()?L("Não informado","No informado"):person)+"  ›",
+                L("Ocultar só patrimônio: ","Ocultar solo patrimonio: ")+(hidden?L("Sim","Sí"):L("Não","No"))+"  ›",
+                L("Modo privacidade — todos os valores: ","Modo privacidad — todos los valores: ")+(privacyAll?L("Ativo","Activo"):L("Desativado","Desactivado"))+"  ›",
+                L("Gerenciar lançamentos do mês","Gestionar movimientos del mes")+"  ›"
+        };
         new AlertDialog.Builder(this)
                 .setTitle(L("Configurações","Configuración"))
-                .setItems(items,(d,w)->{if(w==0)showLanguageDialog(false);else showCurrencyDialog(false);})
+                .setItems(items,(d,w)->{
+                    if(w==0)showLanguageDialog(false);
+                    else if(w==1)showCurrencyDialog(false);
+                    else if(w==2)showNameDialog();
+                    else if(w==3){
+                        store.p.edit().putBoolean("hide_patrimonio",!hidden).apply();
+                        if(view!=null)view.invalidate();
+                        Toast.makeText(this,!hidden?L("Patrimônio ocultado","Patrimonio ocultado"):L("Patrimônio visível","Patrimonio visible"),Toast.LENGTH_SHORT).show();
+                    }else if(w==4){
+                        store.p.edit().putBoolean("privacy_all_values",!privacyAll).apply();
+                        if(view!=null)view.invalidate();
+                        Toast.makeText(this,!privacyAll?L("Modo privacidade ativado","Modo privacidad activado"):L("Modo privacidade desativado","Modo privacidad desactivado"),Toast.LENGTH_SHORT).show();
+                    }else showMovementManager();
+                })
                 .setNegativeButton(L("Fechar","Cerrar"),null)
+                .show();
+    }
+
+    void showNameDialog(){
+        EditText e=field(L("Seu nome","Tu nombre"));
+        e.setText(store.getString("profile_name",""));
+        e.setSelection(e.getText().length());
+        new AlertDialog.Builder(this)
+                .setTitle(L("Nome do perfil","Nombre del perfil"))
+                .setMessage(L("O nome aparece na saudação da tela inicial.","El nombre aparece en el saludo de la pantalla inicial."))
+                .setView(e)
+                .setNegativeButton(L("Cancelar","Cancelar"),null)
+                .setNeutralButton(L("Remover nome","Quitar nombre"),(d,w)->{store.putString("profile_name","");if(view!=null)view.invalidate();})
+                .setPositiveButton(L("Salvar","Guardar"),(d,w)->{store.putString("profile_name",e.getText().toString().trim());if(view!=null)view.invalidate();})
                 .show();
     }
 
@@ -209,10 +245,10 @@ public class MainActivity extends Activity {
         EditText value = field(L("Valor (ex.: 250,90)","Importe (ej.: 250,90)")); value.setInputType(2|8192);
         Spinner cat = new Spinner(this);
         String[] codes = income ? new String[]{"Salario","Venta","Ingreso extra","Inversión","Otros"}
-                : new String[]{"Hogar","Supermercado","Alimentación","Transporte","Salud","Ocio","Tarjeta","Deuda","Negocio","Otros"};
+                : new String[]{"Hogar","Supermercado","Piezas","Materiales","Compras varias","Alimentación","Transporte","Salud","Ocio","Tarjeta","Deuda","Negocio","Otros"};
         String[] labels = income
                 ? (isPt()?new String[]{"Salário","Venda","Renda extra","Investimento","Outros"}:new String[]{"Salario","Venta","Ingreso extra","Inversión","Otros"})
-                : (isPt()?new String[]{"Casa","Supermercado","Alimentação","Transporte","Saúde","Lazer","Cartão","Dívida","Empresa","Outros"}:new String[]{"Hogar","Supermercado","Alimentación","Transporte","Salud","Ocio","Tarjeta","Deuda","Negocio","Otros"});
+                : (isPt()?new String[]{"Casa","Supermercado","Peças","Materiais","Outras compras","Alimentação","Transporte","Saúde","Lazer","Cartão","Dívida","Empresa","Outros"}:new String[]{"Hogar","Supermercado","Repuestos","Materiales","Otras compras","Alimentación","Transporte","Salud","Ocio","Tarjeta","Deuda","Negocio","Otros"});
         cat.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, labels));
         box.addView(desc); box.addView(value); box.addView(cat);
         new AlertDialog.Builder(this).setTitle(income?L("Adicionar receita","Añadir ingreso"):L("Adicionar gasto","Añadir gasto")).setView(box)
@@ -223,6 +259,46 @@ public class MainActivity extends Activity {
                 }).show();
     }
 
+    void showMovementManager(){
+        final Dialog dialog=new Dialog(this);
+        LinearLayout box=new LinearLayout(this); box.setOrientation(LinearLayout.VERTICAL); box.setPadding(dp(18),dp(14),dp(18),dp(14));
+        GradientDrawable bg=new GradientDrawable(); bg.setColor(Color.rgb(28,36,39)); bg.setCornerRadius(dp(18)); box.setBackground(bg);
+        TextView title=setupText(L("Lançamentos do mês","Movimientos del mes"),22,true); title.setGravity(Gravity.START); box.addView(title);
+        TextView sub=setupText(L("Corrija um lançamento errado sem perder o restante do histórico.","Corrige un movimiento incorrecto sin perder el resto del historial."),13,false); sub.setGravity(Gravity.START); sub.setTextColor(Color.rgb(205,218,220)); box.addView(sub);
+        JSONArray a=store.arr("mov_"+store.month());
+        if(a.length()==0){TextView empty=setupText(L("Nenhum lançamento neste mês.","No hay movimientos este mes."),15,false);empty.setGravity(Gravity.START);box.addView(empty);}
+        for(int i=a.length()-1;i>=0;i--){
+            try{
+                JSONObject o=a.getJSONObject(i); final int index=i; boolean income=o.optBoolean("i",false);
+                LinearLayout row=new LinearLayout(this);row.setOrientation(LinearLayout.HORIZONTAL);row.setGravity(Gravity.CENTER_VERTICAL);row.setPadding(dp(12),dp(6),dp(6),dp(6));
+                GradientDrawable rb=new GradientDrawable();rb.setColor(Color.rgb(10,54,57));rb.setCornerRadius(dp(12));row.setBackground(rb);
+                String desc=o.optString("d",L("Lançamento","Movimiento"));
+                TextView info=setupText((income?"+ ":"− ")+desc+"\n"+(view!=null?view.money(o.optDouble("v",0)):String.valueOf(o.optDouble("v",0))),13,false);info.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);info.setMaxLines(2);
+                row.addView(info,new LinearLayout.LayoutParams(0,dp(60),1));
+                TextView del=new TextView(this);del.setText(L("APAGAR","BORRAR"));del.setTextColor(Color.WHITE);del.setTextSize(11);del.setTypeface(Typeface.DEFAULT_BOLD);del.setGravity(Gravity.CENTER);
+                GradientDrawable db=new GradientDrawable();db.setColor(Color.rgb(190,55,65));db.setCornerRadius(dp(10));del.setBackground(db);row.addView(del,new LinearLayout.LayoutParams(dp(82),dp(42)));
+                LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(-1,dp(70));rp.setMargins(0,dp(5),0,0);box.addView(row,rp);
+                del.setOnClickListener(v->new AlertDialog.Builder(this).setTitle(L("Apagar lançamento?","¿Borrar movimiento?")).setMessage(desc).setNegativeButton(L("Cancelar","Cancelar"),null).setPositiveButton(L("Apagar","Borrar"),(d,w)->{store.removeMovement(index);if(view!=null)view.invalidate();dialog.dismiss();showMovementManager();}).show());
+            }catch(Exception ignored){}
+        }
+        TextView close=setupButton(L("FECHAR","CERRAR"));box.addView(close);close.setOnClickListener(v->dialog.dismiss());
+        ScrollView scroll=new ScrollView(this);scroll.addView(box);dialog.setContentView(scroll);dialog.show();Window win=dialog.getWindow();if(win!=null){win.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));win.setLayout((int)(getResources().getDisplayMetrics().widthPixels*.94f),WindowManager.LayoutParams.WRAP_CONTENT);}
+    }
+
+    void addHouseExpense(){
+        LinearLayout box=form();
+        EditText desc=field(L("O que você comprou ou pagou?","¿Qué compraste o pagaste?"));
+        EditText value=field(L("Valor","Importe")); value.setInputType(2|8192);
+        Spinner cat=new Spinner(this);
+        String[] codes={"Hogar","Supermercado","Piezas","Materiales","Compras varias","Salud","Transporte","Otros"};
+        String[] labels=isPt()?new String[]{"Casa / contas","Supermercado","Peças","Materiais","Outras compras","Saúde","Transporte","Outros"}:new String[]{"Hogar / cuentas","Supermercado","Repuestos","Materiales","Otras compras","Salud","Transporte","Otros"};
+        cat.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,labels));
+        box.addView(desc);box.addView(value);box.addView(cat);
+        new AlertDialog.Builder(this).setTitle(L("Registrar gasto da casa","Registrar gasto del hogar")).setView(box)
+                .setNegativeButton(L("Cancelar","Cancelar"),null)
+                .setPositiveButton(L("Salvar","Guardar"),(d,w)->{double v=parse(value.getText().toString());if(v>0){store.addMovement(desc.getText().toString(),v,codes[cat.getSelectedItemPosition()],false);if(view!=null)view.invalidate();}}).show();
+    }
+
     void addMarket(){
         LinearLayout box=form(); EditText name=field(L("Produto","Producto")); EditText value=field(L("Preço","Precio")); value.setInputType(2|8192);
         box.addView(name);box.addView(value);
@@ -230,7 +306,41 @@ public class MainActivity extends Activity {
                 .setNegativeButton(L("Cancelar","Cancelar"),null).setPositiveButton(L("Adicionar","Añadir"),(d,w)->{
                     double v=parse(value.getText().toString()); if(v<=0)return;
                     store.addMarket(name.getText().toString(),v); view.invalidate();
+                    Toast.makeText(this,L("Adicionado à lista. Marque COMPREI para virar gasto.","Añadido a la lista. Marca COMPRÉ para convertirlo en gasto."),Toast.LENGTH_LONG).show();
                 }).show();
+    }
+
+
+    void showMarketManager(){
+        final Dialog dialog=new Dialog(this);
+        LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(18),dp(14),dp(18),dp(14));
+        GradientDrawable bg=new GradientDrawable();bg.setColor(Color.rgb(28,36,39));bg.setCornerRadius(dp(18));box.setBackground(bg);
+        TextView title=setupText(L("Lista do supermercado","Lista del supermercado"),22,true);title.setGravity(Gravity.START);box.addView(title);
+        JSONArray a=store.arr("market_"+store.month());
+        if(a.length()==0){TextView empty=setupText(L("Sua lista está vazia.","Tu lista está vacía."),15,false);empty.setGravity(Gravity.START);box.addView(empty);} 
+        for(int i=0;i<a.length();i++){
+            try{
+                JSONObject o=a.getJSONObject(i); final int index=i;
+                LinearLayout row=new LinearLayout(this);row.setOrientation(LinearLayout.HORIZONTAL);row.setGravity(Gravity.CENTER_VERTICAL);row.setPadding(dp(12),dp(6),dp(6),dp(6));
+                GradientDrawable rb=new GradientDrawable();rb.setColor(Color.rgb(10,54,57));rb.setCornerRadius(dp(12));row.setBackground(rb);
+                boolean done=o.has("done")?o.optBoolean("done",false):true;
+                TextView info=setupText((done?"✓ ":"○ ")+o.optString("n",L("Produto","Producto"))+"   "+(view!=null?view.money(o.optDouble("v",0)):String.valueOf(o.optDouble("v",0))),14,false);info.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);
+                row.addView(info,new LinearLayout.LayoutParams(0,dp(52),1));
+                TextView buy=new TextView(this);buy.setText(done?L("DESFAZER","DESHACER"):L("COMPREI","COMPRÉ"));buy.setTextColor(Color.WHITE);buy.setTextSize(10);buy.setTypeface(Typeface.DEFAULT_BOLD);buy.setGravity(Gravity.CENTER);GradientDrawable bb=new GradientDrawable();bb.setColor(Color.rgb(16,112,91));bb.setCornerRadius(dp(10));buy.setBackground(bb);row.addView(buy,new LinearLayout.LayoutParams(dp(76),dp(42)));
+                TextView del=new TextView(this);del.setText("×");del.setTextColor(Color.WHITE);del.setTextSize(20);del.setTypeface(Typeface.DEFAULT_BOLD);del.setGravity(Gravity.CENTER);GradientDrawable db=new GradientDrawable();db.setColor(Color.rgb(190,55,65));db.setCornerRadius(dp(10));del.setBackground(db);LinearLayout.LayoutParams dlp=new LinearLayout.LayoutParams(dp(44),dp(42));dlp.setMargins(dp(6),0,0,0);row.addView(del,dlp);
+                LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(-1,dp(64));rp.setMargins(0,dp(5),0,0);box.addView(row,rp);
+                buy.setOnClickListener(v->{store.toggleMarketPurchased(index);if(view!=null)view.invalidate();dialog.dismiss();showMarketManager();});
+                del.setOnClickListener(v->new AlertDialog.Builder(this).setTitle(L("Apagar item?","¿Borrar artículo?")).setMessage(done?L("O item comprado também será retirado dos gastos do mês.","El artículo comprado también se quitará de los gastos del mes."):o.optString("n","")).setNegativeButton(L("Cancelar","Cancelar"),null).setPositiveButton(L("Apagar","Borrar"),(d,w)->{store.removeMarket(index);if(view!=null)view.invalidate();dialog.dismiss();showMarketManager();}).show());
+            }catch(Exception ignored){}
+        }
+        TextView add=setupButton(L("+ ADICIONAR PRODUTO","+ AÑADIR PRODUCTO"));box.addView(add);add.setOnClickListener(v->{dialog.dismiss();addMarket();});
+        TextView close=setupButton(L("FECHAR","CERRAR"));box.addView(close);close.setOnClickListener(v->dialog.dismiss());
+        ScrollView scroll=new ScrollView(this);scroll.addView(box);dialog.setContentView(scroll);dialog.show();
+        Window w=dialog.getWindow();if(w!=null){w.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));w.setLayout((int)(getResources().getDisplayMetrics().widthPixels*.94f),WindowManager.LayoutParams.WRAP_CONTENT);}
+    }
+
+    void showDebtManager(){
+        final Dialog dialog=new Dialog(this);LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(18),dp(14),dp(18),dp(14));GradientDrawable bg=new GradientDrawable();bg.setColor(Color.rgb(28,36,39));bg.setCornerRadius(dp(18));box.setBackground(bg);TextView title=setupText(L("Gerenciar dívidas","Gestionar deudas"),22,true);title.setGravity(Gravity.START);box.addView(title);JSONArray a=store.arr("debts");if(a.length()==0){TextView e=setupText(L("Nenhuma dívida registrada.","No hay deudas registradas."),15,false);e.setGravity(Gravity.START);box.addView(e);}for(int i=0;i<a.length();i++){try{JSONObject o=a.getJSONObject(i);final int idx=i;LinearLayout row=new LinearLayout(this);row.setOrientation(LinearLayout.HORIZONTAL);row.setGravity(Gravity.CENTER_VERTICAL);row.setPadding(dp(12),dp(6),dp(6),dp(6));GradientDrawable rb=new GradientDrawable();rb.setColor(Color.rgb(10,54,57));rb.setCornerRadius(dp(12));row.setBackground(rb);TextView info=setupText(o.optString("n","")+"   "+(view!=null?view.money(o.optDouble("v",0)):o.optDouble("v",0)),13,false);info.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);row.addView(info,new LinearLayout.LayoutParams(0,dp(52),1));TextView del=new TextView(this);del.setText(L("APAGAR","BORRAR"));del.setTextColor(Color.WHITE);del.setTextSize(11);del.setTypeface(Typeface.DEFAULT_BOLD);del.setGravity(Gravity.CENTER);GradientDrawable db=new GradientDrawable();db.setColor(Color.rgb(190,55,65));db.setCornerRadius(dp(10));del.setBackground(db);row.addView(del,new LinearLayout.LayoutParams(dp(82),dp(42)));LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(-1,dp(64));rp.setMargins(0,dp(5),0,0);box.addView(row,rp);del.setOnClickListener(v->new AlertDialog.Builder(this).setTitle(L("Apagar dívida?","¿Borrar deuda?")).setMessage(o.optString("n","")).setNegativeButton(L("Cancelar","Cancelar"),null).setPositiveButton(L("Apagar","Borrar"),(d,w)->{store.removeDebt(idx);if(view!=null)view.invalidate();dialog.dismiss();showDebtManager();}).show());}catch(Exception ignored){}}TextView add=setupButton(L("+ NOVA DÍVIDA","+ NUEVA DEUDA"));box.addView(add);add.setOnClickListener(v->{dialog.dismiss();addDebt();});TextView close=setupButton(L("FECHAR","CERRAR"));box.addView(close);close.setOnClickListener(v->dialog.dismiss());ScrollView scroll=new ScrollView(this);scroll.addView(box);dialog.setContentView(scroll);dialog.show();Window w=dialog.getWindow();if(w!=null){w.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));w.setLayout((int)(getResources().getDisplayMetrics().widthPixels*.94f),WindowManager.LayoutParams.WRAP_CONTENT);}
     }
 
     void addDebt(){
@@ -289,7 +399,21 @@ public class MainActivity extends Activity {
         JSONArray arr(String k){try{return new JSONArray(p.getString(k,"[]"));}catch(Exception e){return new JSONArray();}}
         void save(String k,JSONArray a){p.edit().putString(k,a.toString()).apply();}
         void addMovement(String desc,double value,String cat,boolean income){try{JSONArray a=arr("mov_"+month());JSONObject o=new JSONObject();o.put("d",desc);o.put("v",value);o.put("c",cat);o.put("i",income);o.put("t",System.currentTimeMillis());a.put(o);save("mov_"+month(),a);}catch(Exception ignored){}}
-        void addMarket(String name,double value){try{JSONArray a=arr("market_"+month());JSONObject o=new JSONObject();o.put("n",name);o.put("v",value);a.put(o);save("market_"+month(),a);addMovement("SmartMarket: "+name,value,"Supermercado",false);}catch(Exception ignored){}}
+        void addMarket(String name,double value){try{
+            String id=UUID.randomUUID().toString();
+            JSONArray a=arr("market_"+month());JSONObject o=new JSONObject();o.put("id",id);o.put("n",name);o.put("v",value);o.put("done",false);a.put(o);save("market_"+month(),a);
+        }catch(Exception ignored){}}
+        void toggleMarketPurchased(int index){try{
+            JSONArray a=arr("market_"+month());if(index<0||index>=a.length())return;JSONObject item=a.getJSONObject(index);String id=item.optString("id","");boolean done=item.has("done")?item.optBoolean("done",false):true;
+            if(done){removeMovementByMarketId(id);item.put("done",false);}else{JSONArray m=arr("mov_"+month());JSONObject mv=new JSONObject();mv.put("d","SmartMarket: "+item.optString("n",""));mv.put("v",item.optDouble("v",0));mv.put("c","Supermercado");mv.put("i",false);mv.put("t",System.currentTimeMillis());mv.put("mid",id);m.put(mv);save("mov_"+month(),m);item.put("done",true);}
+            save("market_"+month(),a);
+        }catch(Exception ignored){}}
+        void removeMovementByMarketId(String id){if(id==null||id.isEmpty())return;JSONArray m=arr("mov_"+month());for(int i=m.length()-1;i>=0;i--){JSONObject mv=m.optJSONObject(i);if(mv!=null&&id.equals(mv.optString("mid","")))m.remove(i);}save("mov_"+month(),m);}
+        void removeMovement(int index){try{JSONArray m=arr("mov_"+month());if(index<0||index>=m.length())return;JSONObject mv=m.optJSONObject(index);String id=mv==null?"":mv.optString("mid","");m.remove(index);save("mov_"+month(),m);if(!id.isEmpty()){JSONArray a=arr("market_"+month());for(int i=0;i<a.length();i++){JSONObject it=a.optJSONObject(i);if(it!=null&&id.equals(it.optString("id",""))){it.put("done",false);break;}}save("market_"+month(),a);}}catch(Exception ignored){}}
+        void removeMarket(int index){try{
+            JSONArray a=arr("market_"+month());if(index<0||index>=a.length())return;JSONObject item=a.getJSONObject(index);String id=item.optString("id","");String name=item.optString("n","");double value=item.optDouble("v",0);boolean done=item.has("done")?item.optBoolean("done",false):true;a.remove(index);save("market_"+month(),a);
+            if(done){if(!id.isEmpty())removeMovementByMarketId(id);else{JSONArray m=arr("mov_"+month());for(int i=m.length()-1;i>=0;i--){JSONObject mv=m.optJSONObject(i);if(mv!=null&&("SmartMarket: "+name).equals(mv.optString("d",""))&&Math.abs(mv.optDouble("v",0)-value)<0.01){m.remove(i);break;}}save("mov_"+month(),m);}}
+        }catch(Exception ignored){}}
         void addDebt(String name,double value){try{JSONArray a=arr("debts");JSONObject o=new JSONObject();o.put("n",name);o.put("v",value);a.put(o);save("debts",a);}catch(Exception ignored){}}
         double income(){return sumMov(true);} double expense(){return sumMov(false);} double sumMov(boolean income){return sumMovKey("mov_"+month(),income);} 
         double sumMovKey(String key,boolean income){double total=0;JSONArray a=arr(key);for(int i=0;i<a.length();i++)try{JSONObject o=a.getJSONObject(i);if(o.getBoolean("i")==income)total+=o.getDouble("v");}catch(Exception ignored){}return total;}
@@ -305,6 +429,9 @@ public class MainActivity extends Activity {
                 case "Cartão": case "Tarjeta": return "Tarjeta";
                 case "Dívida": case "Deuda": return "Deuda";
                 case "Empresa": case "Negocio": return "Negocio";
+                case "Peças": case "Piezas": case "Repuestos": return "Piezas";
+                case "Materiais": case "Materiales": return "Materiales";
+                case "Outras compras": case "Otras compras": case "Compras varias": return "Compras varias";
                 case "Outros": case "Otros": return "Otros";
                 case "Salário": case "Salario": return "Salario";
                 case "Renda extra": case "Ingreso extra": return "Ingreso extra";
@@ -314,7 +441,9 @@ public class MainActivity extends Activity {
         }
         double category(String c){double total=0;String target=canonicalCategory(c);JSONArray a=arr("mov_"+month());for(int i=0;i<a.length();i++)try{JSONObject o=a.getJSONObject(i);if(o.getBoolean("i"))continue;String oc=canonicalCategory(o.getString("c"));if(oc.equals(target))total+=o.getDouble("v");}catch(Exception ignored){}return total;}
         double marketTotal(){double s=0;JSONArray a=arr("market_"+month());for(int i=0;i<a.length();i++)try{s+=a.getJSONObject(i).getDouble("v");}catch(Exception ignored){}return s;}
+        double marketPurchased(){double total=0;JSONArray a=arr("market_"+month());for(int i=0;i<a.length();i++)try{JSONObject o=a.getJSONObject(i);boolean done=o.has("done")?o.optBoolean("done",false):true;if(done)total+=o.optDouble("v",0);}catch(Exception ignored){}return total;}
         double debts(){double s=0;JSONArray a=arr("debts");for(int i=0;i<a.length();i++)try{s+=a.getJSONObject(i).getDouble("v");}catch(Exception ignored){}return s;}
+        void removeDebt(int index){try{JSONArray a=arr("debts");if(index>=0&&index<a.length()){a.remove(index);save("debts",a);}}catch(Exception ignored){}}
         double getDouble(String k,double d){return p.getFloat(k,(float)d);} void putDouble(String k,double v){p.edit().putFloat(k,(float)v).apply();}
         int getInt(String k,int d){return p.getInt(k,d);} void putInt(String k,int v){p.edit().putInt(k,v).apply();}
         String getString(String k,String d){return p.getString(k,d);} void putString(String k,String v){p.edit().putString(k,v).apply();}
@@ -330,7 +459,8 @@ public class MainActivity extends Activity {
         void updateLanguage(){tabs=isPt()?new String[]{"Hoje","Finanças","+","Evolução","Smart AI"}:new String[]{"Hoy",l("Finanças","Finanzas"),"+","Evolución","Smart AI"};}
         String l(String pt,String es){return L(pt,es);}
         void updateCurrency(){invalidate();}
-        String money(double value){
+        String money(double value){return s.p.getBoolean("privacy_all_values",false)?"••••••":moneyRaw(value);}
+        String moneyRaw(double value){
             String code=s.getString("currency","BRL"),symbol;
             switch(code){case "USD":symbol="US$";break;case "EUR":symbol="€";break;case "MXN":symbol="MX$";break;case "COP":symbol="COL$";break;case "ARS":symbol="AR$";break;case "CLP":symbol="CLP$";break;case "PEN":symbol="S/";break;case "UYU":symbol="$U";break;default:symbol="R$";break;}
             java.text.DecimalFormatSymbols ds=new java.text.DecimalFormatSymbols(isPt()?new Locale("pt","BR"):new Locale("es","ES"));
@@ -360,7 +490,11 @@ public class MainActivity extends Activity {
         }
         void home(Canvas c,float w,float y){
             double in=s.income(),ex=s.expense(),free=in-ex,pat=free+s.getDouble("reserva",0)+s.getDouble("investimentos",0)+s.getDouble("patrimonio_extra",0)-s.debts();
-            txt(c,l("Olá! Vamos construir seu futuro.","¡Hola! Vamos a construir tu futuro."),18,y+8,17,text,true);txt(c,l("Patrimônio líquido","Patrimonio neto"),18,y+29,9.5f,muted,false);txt(c,money(pat),18,y+58,25,text,true);trendBadge(c,w-91,y+35,73,28, monthTrend());
+            String person=s.getString("profile_name","").trim();String first=person.isEmpty()?"":person.split("\\s+")[0];
+            String hello=first.isEmpty()?l("Olá! Vamos construir seu futuro.","¡Hola! Vamos a construir tu futuro."):l("Olá, ","¡Hola, ")+first+l("! Vamos construir seu futuro.","! Vamos a construir tu futuro.");
+            boolean hidePat=s.p.getBoolean("hide_patrimonio",false);
+            txt(c,hello,18,y+8,17,text,true);txt(c,l("Patrimônio líquido","Patrimonio neto"),18,y+29,9.5f,muted,false);txt(c,hidePat?"••••••":money(pat),18,y+58,25,text,true);
+            txt(c,hidePat?l("mostrar","mostrar"):l("ocultar","ocultar"),w-88,y+29,8.5f,teal,true);hitD(w-100,y+12,w-20,y+35,()->{boolean h=s.p.getBoolean("hide_patrimonio",false);s.p.edit().putBoolean("hide_patrimonio",!h).apply();invalidate();});trendBadge(c,w-91,y+35,73,28, monthTrend());
             card(c,14,y+74,w-14,y+140);metric(c,l("Disponível","Disponible"),money(Math.max(0,in)),24,y+96,teal);metric(c,l("Gastos","Gastos"),money(ex),144,y+96,red);metric(c,l("Livre","Libre"),money(free),266,y+96,cyan);
             card(c,14,y+151,w-14,y+225);txt(c,l("✦  SUA PRIORIDADE HOJE","✦  TU PRIORIDAD DE HOY"),24,y+174,10.5f,teal,true);wrap(c,advice(),24,y+195,w-48,11.5f,text);
             card(c,14,y+236,w-14,y+302);metric(c,"Score",String.valueOf(score()),24,y+258,teal);String reserveLabel=reserveLabel();metric(c,l("Reserva","Reserva"),reserveLabel,144,y+258,cyan);metric(c,l("Liberdade","Libertad"),freedom()+"%",266,y+258,teal);
@@ -375,11 +509,25 @@ public class MainActivity extends Activity {
         double reserveMonths(){double e=essential();if(e<=0)return -1;return s.getDouble("reserva",0)/e;}
         String reserveLabel(){double m=reserveMonths();return m<0?l("Configurar","Configurar"):String.format(Locale.US,"%.1f meses",m);}
         int freedom(){double p=s.getDouble("investimentos",0)+s.getDouble("reserva",0);double monthly=essential()>0?essential():s.expense();if(monthly<=0)return 0;double target=monthly*12*25;return (int)Math.min(100,100*p/Math.max(1,target));}
-        void finance(Canvas c,float w,float y){txt(c,l("Finanças","Finanzas"),18,y+6,20,text,true);txt(c,l("Tudo em um só lugar","Todo en un solo lugar"),18,y+25,10,muted,false);String[][] items={{"⌂",l("Minha Casa","Mi Hogar"),l("Gastos da casa","Gastos del hogar")},{"▣","SmartMarket",l("Lista com soma automática","Lista con suma automática")},{"≡",l("Dívidas","Deudas"),l("Plano de pagamento","Plan de pago")},{"◆",l("Reserva","Reserva"),l("Sua segurança","Tu seguridad")},{"↗",l("Investimentos","Inversiones"),l("Crescimento","Crecimiento")},{"◇",l("Patrimônio","Patrimonio"),l("Seus ativos","Tus activos")},{"▦",l("Minha Empresa","Mi Negocio"),l("Gestão do negócio","Gestión del negocio")},{"♥",l("Recomeço","Nuevo Comienzo"),l("Reconstrução","Reconstrucción")}};int[] screens={5,6,7,0,8,8,9,10};for(int i=0;i<8;i++){int col=i%2,row=i/2;float x=14+col*187,yy=y+42+row*101;card(c,x,yy,x+174,yy+88);txt(c,items[i][0],x+14,yy+26,20,(i==7?red:teal),true);txt(c,items[i][1],x+42,yy+25,13,text,true);wrap(c,items[i][2],x+14,yy+52,145,10.5f,muted);final int sc=screens[i],idx=i;hitD(x,yy,x+174,yy+88,()->{if(idx==3)setSimpleValue("reserva",l("Atualizar reserva de emergência","Actualizar fondo de emergencia"));else{screen=sc;invalidate();}});}txt(c,l("Dica: mantenha seus dados atualizados para receber análises melhores.","Consejo: mantén tus datos actualizados para recibir mejores análisis."),18,y+462,10,muted,false);}
+        void finance(Canvas c,float w,float y){txt(c,l("Finanças","Finanzas"),18,y+6,20,text,true);txt(c,l("Tudo em um só lugar","Todo en un solo lugar"),18,y+25,10,muted,false);String[][] items={{"⌂",l("Minha Casa","Mi Hogar"),l("Gastos da casa","Gastos del hogar")},{"▣","SmartMarket",l("Lista com soma automática","Lista con suma automática")},{"≡",l("Dívidas","Deudas"),l("Plano de pagamento","Plan de pago")},{"◆",l("Reserva","Reserva"),l("Sua segurança","Tu seguridad")},{"↗",l("Investimentos","Inversiones"),l("Crescimento","Crecimiento")},{"◇",l("Patrimônio","Patrimonio"),l("Seus ativos","Tus activos")},{"▦",l("Minha Empresa","Mi Negocio"),l("Gestão do negócio","Gestión del negocio")},{"♥",l("Recomeço","Nuevo Comienzo"),l("Reconstrução","Reconstrucción")}};int[] screens={5,6,7,0,8,8,9,10};for(int i=0;i<8;i++){int col=i%2,row=i/2;float x=14+col*187,yy=y+42+row*101;card(c,x,yy,x+174,yy+88);txt(c,items[i][0],x+14,yy+26,20,(i==7?red:teal),true);txt(c,items[i][1],x+42,yy+25,13,text,true);wrap(c,items[i][2],x+14,yy+52,145,10.5f,muted);final int sc=screens[i],idx=i;hitD(x,yy,x+174,yy+88,()->{if(idx==3)setSimpleValue("reserva",l("Atualizar reserva de emergência","Actualizar fondo de emergencia"));else{screen=sc;invalidate();}});}button(c,l("Histórico do mês","Historial del mes"),18,y+454,w-18,y+496,()->showMovementManager());txt(c,l("Dica: corrija lançamentos errados no histórico para manter as análises confiáveis.","Consejo: corrige movimientos incorrectos para mantener análisis confiables."),18,y+518,9.5f,muted,false);}
         void evolution(Canvas c,float w,float y){txt(c,l("Minha Jornada","Mi Camino"),18,y+6,20,text,true);txt(c,l("Seu progresso é salvo mês a mês","Tu progreso se guarda mes a mes"),18,y+25,10,muted,false);card(c,14,y+43,w-14,y+97);txt(c,"‹",28,y+78,24,cyan,true);txt(c,s.month(),w/2-30,y+76,12,text,true);txt(c,"›",w-39,y+78,24,cyan,true);hitD(14,y+43,w/2-20,y+97,()->{s.prevMonth();invalidate();});hitD(w/2+20,y+43,w-14,y+97,()->{s.nextMonth();invalidate();});double in=s.income(),ex=s.expense();card(c,14,y+110,w-14,y+202);metric(c,l("Receitas","Ingresos"),money(in),24,y+133,teal);metric(c,l("Gastos","Gastos"),money(ex),202,y+133,red);metric(c,l("Resultado","Resultado"),money(in-ex),24,y+174,(in-ex)>=0?teal:red);metric(c,"Score",String.valueOf(score()),202,y+174,cyan);card(c,14,y+215,w-14,y+334);txt(c,l("HISTÓRICO 6 MESES","HISTORIAL 6 MESES"),24,y+238,10,muted,true);miniChart(c,25,y+318,w-28,y+255);wrap(c,l("Cada mês fica salvo separadamente. Você pode voltar sem apagar as etapas anteriores.","Cada mes se conserva por separado. Puedes volver atrás sin borrar las etapas anteriores."),22,y+365,w-44,11.5f,muted);wrap(c,l("“As decisões que estou tomando hoje estão me aproximando ou me afastando da vida que quero ter?”","“¿Las decisiones que estoy tomando hoy me acercan o me alejan de la vida que quiero construir?”"),22,y+424,w-44,13,text);}
-        void house(Canvas c,float w,float y){double total=essential();txt(c,l("Minha Casa","Mi Hogar"),18,y+6,20,text,true);txt(c,l("Quanto custa manter sua casa?","¿Cuánto cuesta mantener tu hogar?"),18,y+25,10,muted,false);card(c,14,y+42,w-14,y+111);txt(c,money(total)+l(" / mês"," / mes"),24,y+72,22,text,true);txt(c,total>0?money(total/30)+l(" / dia"," / día"):l("Registre seus gastos essenciais","Registra tus gastos esenciales"),24,y+96,10.5f,muted,false);String[] keys={"Hogar","Supermercado","Salud","Transporte"};String[] labels=isPt()?new String[]{"Casa","Supermercado","Saúde","Transporte"}:new String[]{"Hogar","Supermercado","Salud","Transporte"};for(int i=0;i<keys.length;i++){float yy=y+145+i*52;card(c,14,yy-22,w-14,yy+20);txt(c,labels[i],25,yy+3,12,text,true);txt(c,money(s.category(keys[i])),w-118,yy+3,12,i==1?teal:cyan,true);}button(c,l("+ Registrar gasto da casa","+ Registrar gasto del hogar"),18,y+365,w-18,y+415,()->addMovement(false));}
-        void market(Canvas c,float w,float y){double limit=s.getDouble("mercado_limite",1000),tot=s.marketTotal();txt(c,"SmartMarket",18,y+6,20,text,true);txt(c,l("Compre dentro do seu limite","Compra dentro de tu límite"),18,y+25,10,muted,false);card(c,14,y+42,w-14,y+120);metric(c,l("Orçamento","Presupuesto"),money(limit),24,y+65,muted);metric(c,l("Carrinho","Carrito"),money(tot),204,y+65,teal);progress(c,24,y+103,w-24,Math.min(1,tot/Math.max(1,limit)),tot<=limit?teal:red);txt(c,l("Restante: ","Restante: ")+money(limit-tot),24,y+142,12,(limit-tot)>=0?teal:red,true);JSONArray a=s.arr("market_"+s.month());float yy=y+178;for(int i=Math.max(0,a.length()-5);i<a.length();i++)try{JSONObject o=a.getJSONObject(i);card(c,14,yy-22,w-14,yy+17);txt(c,o.getString("n"),25,yy+2,11.5f,text,false);txt(c,money(o.getDouble("v")),w-105,yy+2,11.5f,muted,true);yy+=47;}catch(Exception ignored){}button(c,l("+ Adicionar produto","+ Añadir producto"),18,y+421,w-18,y+471,()->addMarket());hitD(14,y+42,w-14,y+120,()->setSimpleValue("mercado_limite",l("Definir orçamento do supermercado","Definir presupuesto del supermercado")));}
-        void debts(Canvas c,float w,float y){txt(c,l("Dívidas","Deudas"),18,y+6,20,text,true);txt(c,l("Organize e pague mais rápido","Organiza y paga más rápido"),18,y+25,10,muted,false);txt(c,l("Total: ","Total: ")+money(s.debts()),18,y+66,22,red,true);JSONArray a=s.arr("debts");float yy=y+108;for(int i=0;i<a.length()&&i<6;i++)try{JSONObject o=a.getJSONObject(i);card(c,14,yy-24,w-14,yy+19);txt(c,o.getString("n"),25,yy+2,11.5f,text,true);txt(c,money(o.getDouble("v")),w-110,yy+2,11.5f,red,true);yy+=50;}catch(Exception ignored){}button(c,l("+ Registrar dívida","+ Registrar deuda"),18,y+421,w-18,y+471,()->addDebt());}
+        void house(Canvas c,float w,float y){
+            double total=s.category("Hogar")+s.category("Supermercado")+s.category("Piezas")+s.category("Materiales")+s.category("Compras varias")+s.category("Salud")+s.category("Transporte");
+            txt(c,l("Minha Casa","Mi Hogar"),18,y+6,20,text,true);txt(c,l("Casa, mercado e compras em um só lugar","Hogar, supermercado y compras en un solo lugar"),18,y+25,10,muted,false);
+            card(c,14,y+42,w-14,y+105);txt(c,money(total)+l(" / mês"," / mes"),24,y+70,21,text,true);txt(c,total>0?money(total/30)+l(" / dia"," / día"):l("Comece registrando os gastos da casa","Empieza registrando los gastos del hogar"),24,y+92,10,muted,false);
+            String[] labels=isPt()?new String[]{"Casa","Supermercado","Peças + materiais","Outras compras","Saúde","Transporte"}:new String[]{"Hogar","Supermercado","Repuestos + materiales","Otras compras","Salud","Transporte"};
+            double[] vals={s.category("Hogar"),s.category("Supermercado"),s.category("Piezas")+s.category("Materiales"),s.category("Compras varias"),s.category("Salud"),s.category("Transporte")};
+            for(int i=0;i<labels.length;i++){float yy=y+132+i*40;card(c,14,yy-18,w-14,yy+16);txt(c,labels[i],24,yy+3,11,text,true);txt(c,money(vals[i]),w-115,yy+3,10.5f,i==1?teal:cyan,true);}
+            button(c,l("🛒 Lista do supermercado","🛒 Lista del supermercado"),18,y+373,w-18,y+418,()->{screen=6;invalidate();});
+            button(c,l("+ Peças, materiais ou outros gastos","+ Repuestos, materiales u otros gastos"),18,y+426,w-18,y+471,()->addHouseExpense());
+        }
+        void market(Canvas c,float w,float y){
+            double limit=s.getDouble("mercado_limite",1000),planned=s.marketTotal(),bought=s.marketPurchased();txt(c,"SmartMarket",18,y+6,20,text,true);txt(c,l("Planeje primeiro. Só o que foi comprado vira gasto.","Planifica primero. Solo lo comprado se convierte en gasto."),18,y+25,10,muted,false);
+            card(c,14,y+42,w-14,y+130);metric(c,l("Orçamento","Presupuesto"),money(limit),24,y+65,muted);metric(c,l("Planejado","Planificado"),money(planned),145,y+65,cyan);metric(c,l("Comprado","Comprado"),money(bought),270,y+65,teal);progress(c,24,y+112,w-24,Math.min(1,planned/Math.max(1,limit)),planned<=limit?teal:red);txt(c,l("Saldo planejado: ","Saldo planificado: ")+money(limit-planned),24,y+151,11.5f,(limit-planned)>=0?teal:red,true);
+            JSONArray a=s.arr("market_"+s.month());float yy=y+190;int start=Math.max(0,a.length()-4);for(int i=start;i<a.length();i++)try{JSONObject o=a.getJSONObject(i);final int idx=i;boolean done=o.has("done")?o.optBoolean("done",false):true;card(c,14,yy-22,w-14,yy+17);txt(c,done?"✓":"○",25,yy+3,14,done?teal:muted,true);txt(c,o.getString("n"),47,yy+2,11,text,false);txt(c,money(o.getDouble("v")),w-132,yy+2,10.5f,muted,true);txt(c,"×",w-39,yy+5,18,red,true);hitD(14,yy-20,w-60,yy+18,()->{s.toggleMarketPurchased(idx);invalidate();});hitD(w-58,yy-20,w-14,yy+18,()->new AlertDialog.Builder(MainActivity.this).setTitle(l("Apagar item?","¿Borrar artículo?")).setMessage(done?l("O item também sairá dos gastos realizados.","El artículo también saldrá de los gastos realizados."):l("O item ainda não foi lançado como gasto.","El artículo todavía no fue registrado como gasto.")).setNegativeButton(l("Cancelar","Cancelar"),null).setPositiveButton(l("Apagar","Borrar"),(d,z)->{s.removeMarket(idx);invalidate();}).show());yy+=47;}catch(Exception ignored){}
+            button(c,l("+ Adicionar à lista","+ Añadir a la lista"),18,y+421,w/2-5,y+467,()->addMarket());button(c,l("Gerenciar lista","Gestionar lista"),w/2+5,y+421,w-18,y+467,()->showMarketManager());hitD(14,y+42,w-14,y+130,()->setSimpleValue("mercado_limite",l("Definir orçamento do supermercado","Definir presupuesto del supermercado")));
+        }
+        void debts(Canvas c,float w,float y){txt(c,l("Dívidas","Deudas"),18,y+6,20,text,true);txt(c,l("Organize, corrija e acompanhe sem duplicar registros","Organiza, corrige y controla sin duplicar registros"),18,y+25,10,muted,false);txt(c,l("Total: ","Total: ")+money(s.debts()),18,y+66,22,red,true);JSONArray a=s.arr("debts");float yy=y+108;for(int i=0;i<a.length()&&i<5;i++)try{JSONObject o=a.getJSONObject(i);card(c,14,yy-24,w-14,yy+19);txt(c,o.getString("n"),25,yy+2,11.5f,text,true);txt(c,money(o.getDouble("v")),w-110,yy+2,11.5f,red,true);yy+=50;}catch(Exception ignored){}button(c,l("+ Registrar dívida","+ Registrar deuda"),18,y+385,w/2-5,y+435,()->addDebt());button(c,l("Gerenciar","Gestionar"),w/2+5,y+385,w-18,y+435,()->showDebtManager());}
         void invest(Canvas c,float w,float y){txt(c,l("Investimentos e Patrimônio","Inversiones y Patrimonio"),18,y+6,19,text,true);txt(c,l("Primeiro o objetivo, depois o produto","Primero el objetivo, después el producto"),18,y+25,10,muted,false);double inv=s.getDouble("investimentos",0),extra=s.getDouble("patrimonio_extra",0);card(c,14,y+42,w-14,y+122);metric(c,l("Investido","Invertido"),money(inv),24,y+67,teal);metric(c,l("Outros ativos","Otros activos"),money(extra),204,y+67,cyan);txt(c,l("Liquidez • risco • prazo • objetivo","Liquidez • riesgo • plazo • objetivo"),24,y+109,10,muted,false);button(c,l("Atualizar investimentos","Actualizar inversiones"),18,y+155,w-18,y+205,()->setSimpleValue("investimentos",l("Valor total investido","Importe total invertido")));button(c,l("Atualizar outros ativos","Actualizar otros activos"),18,y+220,w-18,y+270,()->setSimpleValue("patrimonio_extra",l("Imóveis, veículos e outros ativos","Inmuebles, vehículos y otros activos")));card(c,14,y+295,w-14,y+390);txt(c,l("ANÁLISE RESPONSÁVEL","ANÁLISIS RESPONSABLE"),24,y+319,10,teal,true);wrap(c,l("O FinanSmart compara sua situação, liquidez e objetivos. Não promete rentabilidade nem executa investimentos.","FinanSmart compara tu situación, liquidez y objetivos. No promete rentabilidad ni ejecuta inversiones."),24,y+344,w-48,11.5f,text);}
         void business(Canvas c,float w,float y){txt(c,"FinanSmart BUSINESS",18,y+6,19,text,true);txt(c,l("Empresa separada das finanças pessoais","Negocio separado de las finanzas personales"),18,y+25,10,muted,false);double cash=s.getDouble("biz_caixa",0),rec=s.getDouble("biz_receber",0),pay=s.getDouble("biz_pagar",0);card(c,14,y+42,w-14,y+131);txt(c,l("Caixa hoje","Caja hoy"),24,y+65,10,muted,false);txt(c,money(cash),24,y+93,22,text,true);metric(c,l("A receber","Por cobrar"),money(rec),24,y+105,teal);metric(c,l("A pagar","Por pagar"),money(pay),204,y+105,red);button(c,l("Atualizar caixa","Actualizar caja"),18,y+160,w-18,y+210,()->setSimpleValue("biz_caixa",l("Caixa da empresa","Caja del negocio")));button(c,l("Contas a receber","Cuentas por cobrar"),18,y+224,w-18,y+274,()->setSimpleValue("biz_receber",l("Total a receber","Total por cobrar")));button(c,l("Contas a pagar","Cuentas por pagar"),18,y+288,w-18,y+338,()->setSimpleValue("biz_pagar",l("Total a pagar","Total por pagar")));wrap(c,l("O salário do proprietário e as retiradas devem ser tratados separadamente para enxergar o lucro real da empresa.","El sueldo del propietario y los retiros deben tratarse por separado para ver el beneficio real del negocio."),22,y+374,w-44,11.5f,muted);}
         void restart(Canvas c,float w,float y){int days=s.getInt("recomeço_dias",0);double loss=s.getDouble("recomeço_perda",0);txt(c,l("Recomeço","Nuevo Comienzo"),18,y+6,21,text,true);txt(c,l("Reconstrução financeira, sem perseguir perdas","Reconstrucción financiera, sin perseguir pérdidas"),18,y+25,10,muted,false);card(c,14,y+44,w-14,y+173);txt(c,days+l(" dias"," días"),24,y+88,31,teal,true);txt(c,l("construindo uma nova história","construyendo una nueva historia"),24,y+112,11.5f,text,false);txt(c,l("Perda registrada: ","Pérdida registrada: ")+money(loss),24,y+146,11,muted,false);button(c,l("Atualizar meu progresso","Actualizar mi progreso"),18,y+200,w-18,y+250,()->recomeço());buttonRed(c,l("Estou com vontade de apostar","Tengo ganas de apostar"),18,y+265,w-18,y+319,()->new AlertDialog.Builder(MainActivity.this).setTitle(l("Proteja seu progresso","Protege tu progreso")).setMessage(l("Não tente recuperar perdas apostando novamente. Afaste-se do aplicativo ou site de apostas, reveja seu progresso e procure apoio de uma pessoa de confiança ou de serviços especializados. Seu futuro financeiro vale mais que uma aposta.","No intentes recuperar pérdidas apostando de nuevo. Aléjate de la app o sitio de apuestas, revisa tu progreso y busca apoyo de una persona de confianza o de servicios especializados. Tu futuro financiero vale más que una apuesta.")).setPositiveButton(l("Entendi","Entendido"),null).show());card(c,14,y+344,w-14,y+432);txt(c,l("SEU OBJETIVO","TU OBJETIVO"),24,y+368,10,teal,true);wrap(c,l("Recuperar sua vida financeira e reconstruir patrimônio — nunca tentar recuperar dinheiro com novas apostas.","Recuperar tu vida financiera y reconstruir patrimonio — nunca intentar recuperar dinero mediante nuevas apuestas."),24,y+392,w-48,11.5f,text);}
